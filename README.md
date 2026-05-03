@@ -90,6 +90,14 @@ file_manager = "yazi"
 [[full-bulb]]
 path = "~/shara/epics"
 statuses = ["inProgress", "onHold", "toDo"]
+
+[[semi-bulb]]
+path = "~/shara/scripts"
+statuses = ["inProgress", "onHold"]
+
+[[semi-bulb]]
+path = "~/shara/decks"
+statuses = ["inProgress", "onHold"]
 ```
 
 > [!NOTE]
