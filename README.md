@@ -13,7 +13,7 @@ Building on the well-known [PARA Method](https://fortelabs.com/blog/para/) (Proj
 
 ## 🚀 Installation
 
-Once pushed to GitHub, you can install Garlic directly:
+Once Go is installed on your system, you can install garlic:
 
 ```bash
 go install github.com/lucky7xz/garlic@latest
