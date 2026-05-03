@@ -1,0 +1,21 @@
+theme = "dracula"
+
+# Text editor to use when opening files (overridden by $EDITOR)
+editor = "micro"
+
+# File manager to use when opening resource directories 'r' (overridden by $FILEMANAGER)
+file_manager = "yazi"
+
+# Scans all level 1 child directories and uses them as categories regardless of emptiness
+[[full-bulb]]
+path = "~/shara/epics"
+statuses = ["inProgress", "onHold", "toDo"]
+
+# Scans all level 1 child directories but ONLY displays them if they contain a `.clove.md`
+[[semi-bulb]]
+path = "~/shara/scripts"
+statuses = ["inProgress", "onHold"]
+
+[[semi-bulb]]
+path = "~/shara/decks"
+statuses = ["inProgress", "onHold"]
