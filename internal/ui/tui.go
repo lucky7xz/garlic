@@ -499,7 +499,8 @@ func (m Model) View() string {
 
 	numColumns := len(currentBoard.CategoryOrder)
 	if numColumns == 0 {
-		return lipgloss.Place(m.TermWidth, m.TermHeight, lipgloss.Center, lipgloss.Center, "No Categories found for Board: "+currentBoard.Name)
+		msg := "No Areas found for Board: " + currentBoard.Name + "\n\nTip: run `garlic init` to scaffold a demo file system."
+		return lipgloss.Place(m.TermWidth, m.TermHeight, lipgloss.Center, lipgloss.Center, msg)
 	}
 	if len(currentBoard.Statuses) == 0 {
 		return lipgloss.Place(m.TermWidth, m.TermHeight, lipgloss.Center, lipgloss.Center, "No Statuses defined for Board: "+currentBoard.Name)

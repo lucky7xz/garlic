@@ -35,6 +35,17 @@ echo 'export PATH=$PATH:~/go/bin' >> ~/.zshrc
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.zshrc
 echo "Path added to ~/.zshrc. Restart shell to take effect."
 ```
+
+### 🎲 Quick Start
+
+Run the initialization command to generate a pre-peeled workspace that you can tweak to make your own:
+
+```bash
+garlic init
+```
+
+This will generate a directory structure in `~/shara` containing example projects and resources. It perfectly matches the default configuration paths so you can start using `garlic` without the prep work!
+
 ## Why plain-text notes?
 
 - **Simplicity** – no proprietary databases; a file is a file.
