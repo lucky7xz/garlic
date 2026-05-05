@@ -19,6 +19,16 @@ Once Go is installed on your system, you can install garlic:
 go install github.com/lucky7xz/garlic@latest
 ```
 
+### 🔄 Update
+
+To update garlic to the latest version, simply run the installation command again.
+
+If you are not getting the latest version, use this command instead:
+
+```bash
+GOPROXY=direct go install github.com/lucky7xz/garlic/cmd/garlic@latest
+```
+
 ### 🛠️ Post-Installation
 Ensure your shell can find the `garlic` binary. Depending on your OS, run the following:
 
