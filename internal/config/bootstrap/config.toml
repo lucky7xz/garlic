@@ -1,4 +1,9 @@
-theme = "dracula"
+#theme = "dracula"
+#theme = "dracula2"
+theme = "jade"
+#theme = "nord"
+#theme = "everforest"
+#theme = "orasaka"
 
 # Text editor to use when opening files (overridden by $EDITOR)
 editor = "micro"

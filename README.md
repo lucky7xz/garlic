@@ -46,7 +46,7 @@ echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.zshrc
 echo "Path added to ~/.zshrc. Restart shell to take effect."
 ```
 
-### 🎲 Quick Start
+### 🧄 Quick Start
 
 Run the initialization command to generate a pre-peeled workspace that you can tweak to make your own:
 
@@ -55,7 +55,6 @@ garlic init
 ```
 
 This will generate a directory structure in `~/shara` containing example projects and resources. It perfectly matches the default configuration paths so you can start using `garlic` without the prep work!
-
 ## Why plain-text notes?
 
 - **Simplicity** – no proprietary databases; a file is a file.
@@ -122,7 +121,7 @@ statuses = ["inProgress", "onHold"]
 ```
 
 > [!NOTE]
-> If `editor` or `file_manager` are not specified in the config, Garlic will fallback to your system's `$EDITOR` and `$FILEMANAGER` (defaulting to `xdg-open` or `open` if unset).
+> The default configuration uses [micro](https://github.com/zyedidia/micro) as the editor and [yazi](https://github.com/sxyazi/yazi) as the file manager. If `editor` or `file_manager` are not specified in the config, Garlic will fallback to your system's `$EDITOR` and `$FILEMANAGER` (defaulting to `xdg-open` or `open` if unset).
 
 ## ⌨️ UI cheat‑sheet
 
@@ -143,6 +142,16 @@ Garlic handles the "where", but leaves the "how" to your favorite terminal tools
 - `u` – toggle hidden state
 - `Del` – delete the selected file (confirmation required)
 
+## 🎨 Theming
+
+Set your preferred theme in `~/.config/garlic/config.toml`:
+
+```toml
+theme = "dracula" # other options: dracula2, jade, nord, everforest, orasaka
+```
+
+> [!NOTE]
+> If you use **[Drako](https://github.com/lucky7xz/drako)**, its theme settings will automatically override Garlic's theme.
 
 ---
 *Built with [Charm](https://charm.sh/) 🧄*
