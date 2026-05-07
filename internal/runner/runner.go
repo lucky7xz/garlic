@@ -24,36 +24,64 @@ func isAsync(cmd string, asyncList []string) bool {
 	return false
 }
 
+var exitWarnings []string
+
+func fallback() (string, []string) {
+	if runtime.GOOS == "darwin" {
+		return "open", nil
+	}
+	return "xdg-open", nil
+}
+
 func resolveCmd(cfgCmd, envVar string) (string, []string) {
-	cmdStr := os.Getenv(envVar)
-	if cmdStr == "" {
-		cmdStr = cfgCmd
+	cmdStr := cfgCmd
+	source := "config"
+
+	// If config is empty, try the environment variable
+	if cmdStr == "" && envVar != "" {
+		cmdStr = os.Getenv(envVar)
+		source = "environment"
 	}
 
+	// If both are empty, use fallback
 	if cmdStr == "" {
-		if runtime.GOOS == "darwin" {
-			return "open", nil
-		}
-		return "xdg-open", nil
+		return fallback()
 	}
 
 	parts := strings.Fields(cmdStr)
 	if len(parts) == 0 {
-		return "xdg-open", nil
+		return fallback()
 	}
 
 	binary := parts[0]
-	args := parts[1:]
+	var args []string
+	if len(parts) > 1 {
+		// Keep it simple: allow only one flag
+		args = []string{parts[1]}
+	}
 
 	if _, err := exec.LookPath(binary); err != nil {
-		log.Printf("Warning: command '%s' not found, falling back to system default", binary)
-		if runtime.GOOS == "darwin" {
-			return "open", nil
-		}
-		return "xdg-open", nil
+		exitWarnings = append(exitWarnings, fmt.Sprintf("%s command '%s' not found. Falling back to default.", source, binary))
+		return fallback()
 	}
 
 	return binary, args
+}
+
+func executeCmd(binary string, args []string, asyncApps []string) {
+	cmd := exec.Command(binary, args...)
+	if isAsync(binary, asyncApps) {
+		if err := cmd.Start(); err != nil {
+			log.Printf("Failed to start async command: %v\n", err)
+		}
+	} else {
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			log.Printf("Command exited with error: %v\n", err)
+		}
+	}
 }
 
 func Run() {
@@ -95,6 +123,12 @@ func Run() {
 
 		fModel, ok := finalModel.(ui.Model)
 		if !ok || (fModel.SelectedPath == "" && fModel.ResourcePath == "") {
+			if len(exitWarnings) > 0 {
+				fmt.Println("\n--- Garlic Post-Run Warnings ---")
+				for _, w := range exitWarnings {
+					fmt.Printf("⚠️  %s\n", w)
+				}
+			}
 			break
 		}
 
@@ -109,20 +143,7 @@ func Run() {
 			}
 
 			args = append(args, fModel.ResourcePath)
-			cmd := exec.Command(binary, args...)
-
-			if isAsync(binary, cfg.AsyncApps) {
-				if err := cmd.Start(); err != nil {
-					log.Printf("Failed to start async file manager: %v\n", err)
-				}
-			} else {
-				cmd.Stdin = os.Stdin
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-				if err := cmd.Run(); err != nil {
-					log.Printf("Failed to orchestrate file manager: %v\n", err)
-				}
-			}
+			executeCmd(binary, args, cfg.AsyncApps)
 			continue
 		}
 
@@ -136,20 +157,7 @@ func Run() {
 		}
 
 		args = append(args, fModel.SelectedPath)
-		cmd := exec.Command(binary, args...)
-
-		if isAsync(binary, cfg.AsyncApps) {
-			if err := cmd.Start(); err != nil {
-				log.Printf("Editor (async) exited with error: %v\n", err)
-			}
-		} else {
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if err := cmd.Run(); err != nil {
-				log.Printf("Editor exited with error: %v\n", err)
-			}
-		}
+		executeCmd(binary, args, cfg.AsyncApps)
 	}
 }
 

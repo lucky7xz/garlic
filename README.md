@@ -101,20 +101,26 @@ Each `path` becomes a workspace (Bulb). Each `status` tag becomes a horizontal s
 
 ## ⚙️ Configuration
 
-Configure paths, editors, and file manager in `~/.config/garlic/config.toml`.
+Configure paths, editors, and file managers in `~/.config/garlic/config.toml`.
+
+Garlic supports **Primary and Alternative tools**, allowing you to set up quick dual-workflows. For example, you can use `micro` for editing (`Enter`) and `glow -p` for viewing (`Alt+Enter`), or `yazi` for terminal file management (`r`) and `dolphin` for GUI file management (`Alt+r`). 
+
+Commands support up to **one flag** (e.g., `glow -p`).
 
 ```toml
+# Primary tools
 editor = "micro"
 file_manager = "yazi"
 
-# Alternative commands (use alt+enter or alt+r)
-alt_editor = "vim"
+# Alternative tools (use alt+enter or alt+r)
+alt_editor = "glow -p"
 alt_file_manager = "dolphin"
 
 # Modifier for alternatives (default: "alt")
 alt_modifier = "alt"
 
 # Apps that should launch in the background (GUI tools)
+# Note: Do not put TUI apps (like vim, micro, glow) in this list.
 async_apps = ["xdg-open", "open", "dolphin", "gedit", "code"]
 
 [[full-bulb]]

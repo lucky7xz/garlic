@@ -5,28 +5,42 @@ theme = "jade"
 #theme = "everforest"
 #theme = "orasaka"
 
-# -------------------------------
-# -------------------------------
-# Text editor to use when opening files (overridden by $EDITOR)
+# ┌─ Editor ─────────────────────────────────────────────────────────────────┐
+# │ Text editor to use when opening files (overridden by $EDITOR)
+# └──────────────────────────────────────────────────────────────────────────┘
 editor = "micro"
-# File manager to use when opening resource directories 'r' (overridden by $FILEMANAGER)
+
+# ┌─ Alternative Editor ─────────────────────────────────────────────────────┐
+# │ Alternative editor (e.g. use alt+enter to open)
+# └──────────────────────────────────────────────────────────────────────────┘
+alt_editor = "glow -p"
+
+# ┌─ File Manager ───────────────────────────────────────────────────────────┐
+# │ File manager to use when opening resource directories 'r' (overridden by $FILEMANAGER)
+# └──────────────────────────────────────────────────────────────────────────┘
 file_manager = "yazi"
 
-# Modifier key for alternative commands (e.g., "alt", "ctrl")
-alt_modifier = "alt"
-# Alternative editor (e.g. use alt+enter to open)
-alt_editor = "vim"
-# Alternative file manager (e.g. use alt+r to open)
+# ┌─ Alternative File Manager ───────────────────────────────────────────────┐
+# │ Alternative file manager (e.g. use alt+r to open)
+# └──────────────────────────────────────────────────────────────────────────┘
 alt_file_manager = "dolphin"
 
-# -------------------------------
-# -------------------------------
-# Scans all level 1 child directories and uses them as categories regardless of emptiness
+# ┌─ Alt Modifier ───────────────────────────────────────────────────────────┐
+# │ Modifier key for alternative commands (e.g., "alt", "ctrl")
+# └──────────────────────────────────────────────────────────────────────────┘
+alt_modifier = "alt"
+
+
+# ┌─ Full Bulb ──────────────────────────────────────────────────────────────┐
+# │ Scans all level 1 child directories and uses them as categories regardless of emptiness
+# └──────────────────────────────────────────────────────────────────────────┘
 [[full-bulb]]
 path = "~/shara/epics"
 statuses = ["inProgress", "onHold", "toDo"]
 
-# Scans all level 1 child directories but ONLY displays them if they contain a `.clove.md`
+# ┌─ Semi Bulb ──────────────────────────────────────────────────────────────┐
+# │ Scans all level 1 child directories but ONLY displays them if they contain a `.clove.md`
+# └──────────────────────────────────────────────────────────────────────────┘
 [[semi-bulb]]
 path = "~/shara/scripts"
 statuses = ["inProgress", "onHold"]
@@ -35,9 +49,9 @@ statuses = ["inProgress", "onHold"]
 path = "~/shara/decks"
 statuses = ["inProgress", "onHold"]
 
-# -------------------------------
-# -------------------------------
-
-# Applications that should launch in the background (detached from the terminal)
+# ┌─ Async Apps ─────────────────────────────────────────────────────────────┐
+# │ Applications that should launch in the background (detached from the terminal).
+# │ WARNING: Do NOT add TUI/terminal apps (like vim, micro, or glow) to this list! 
+# │ They require a terminal to draw their interface and will fail or glitch if run asynchronously.
+# └──────────────────────────────────────────────────────────────────────────┘
 async_apps = ["xdg-open", "open", "dolphin", "gedit", "code", "nautilus", "thunar", "kate"]
-
