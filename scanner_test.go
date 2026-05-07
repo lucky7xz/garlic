@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/lucky7xz/garlic/internal/domain"
+	"github.com/lucky7xz/garlic/internal/filesystem"
 )
 
 func TestScanBoard(t *testing.T) {
@@ -21,7 +24,7 @@ func TestScanBoard(t *testing.T) {
 	statuses := []string{"toDo", "inProgress"}
 
 	t.Run("Full Bulb (Shows Empty, matches .md)", func(t *testing.T) {
-		opts := BoardOptions{
+		opts := domain.BoardOptions{
 			Path:                tmpDir,
 			Name:                "TestFull",
 			Extension:           ".md",
@@ -29,7 +32,7 @@ func TestScanBoard(t *testing.T) {
 			ShowEmptyCategories: true,
 		}
 
-		board := ScanBoard(opts)
+		board := filesystem.ScanBoard(opts)
 
 		// Expecting both 'work' AND 'empty' to be in CategoryOrder
 		if len(board.CategoryOrder) != 2 {

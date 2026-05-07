@@ -23,6 +23,7 @@ const (
 	stateInsertConfirm
 	stateMoving
 	stateRenaming
+	stateHelp
 	stateTooSmall
 )
 
@@ -317,6 +318,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// --- HELP STATE OVERRIDE ---
+		if m.State == stateHelp {
+			if msg.String() == "q" || msg.String() == "esc" || msg.String() == "?" {
+				m.State = stateNormal
+			}
+			return m, nil
+		}
+
 		// --- NORMAL NAVIGATION STATE ---
 		modR := m.AltModifier + "+r"
 		modEnter := m.AltModifier + "+enter"
@@ -325,6 +334,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+
+		case "?":
+			m.State = stateHelp
 
 		case "tab":
 			m.ShowHidden = !m.ShowHidden
@@ -724,12 +736,15 @@ func (m Model) View() string {
 		insertStyle := m.TitleStyle.Copy().Align(lipgloss.Center)
 		footerStr = insertStyle.Render(fmt.Sprintf("RENAME: %s_", m.RenameInput)) + "\n"
 	} else {
-		line1 := "arrows/hjkl: move • enter: select • r: resource dir • o/p: switch boards • tab: toggle view"
-		line2 := "m: move • u: hide/unhide • i: insert • e: rename • del: purge • q: quit"
-		footerStr = m.HelpStyle.Align(lipgloss.Center).Render(line1+"\n"+line2+"\n* dedicated resources found") + "\n"
+		footerStr = m.HelpStyle.Align(lipgloss.Center).Render("?: help • q: quit") + "\n"
 	}
 
 	finalView := lipgloss.JoinVertical(lipgloss.Center, headerStr, gridStr, footerStr)
+
+	if m.State == stateHelp {
+		overlay := m.helpMenu()
+		return lipgloss.Place(m.TermWidth, m.TermHeight, lipgloss.Center, lipgloss.Center, overlay, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceForeground(lipgloss.Color("0")))
+	}
 
 	// In focus mode, we force-anchor to the very top and remove centering
 	if needsVerticalFocus {
