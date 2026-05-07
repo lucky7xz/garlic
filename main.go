@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lucky7xz/garlic/internal/config"
@@ -59,8 +60,20 @@ func main() {
 			if fm == "" {
 				fm = cfg.FileManager
 			}
+			
+			if fm != "" {
+				if _, err := exec.LookPath(fm); err != nil {
+					log.Printf("Warning: configured file manager '%s' not found, falling back", fm)
+					fm = ""
+				}
+			}
+			
 			if fm == "" {
-				fm = "xdg-open"
+				if runtime.GOOS == "darwin" {
+					fm = "open"
+				} else {
+					fm = "xdg-open"
+				}
 			}
 
 			cmd := exec.Command(fm, fModel.ResourcePath)
@@ -77,9 +90,20 @@ func main() {
 		if editor == "" {
 			editor = cfg.Editor
 		}
+
+		if editor != "" {
+			if _, err := exec.LookPath(editor); err != nil {
+				log.Printf("Warning: configured editor '%s' not found, falling back", editor)
+				editor = ""
+			}
+		}
+
 		if editor == "" {
-			log.Printf("No editor configured. Set EDITOR environment variable or configure 'editor' in config file.")
-			continue
+			if runtime.GOOS == "darwin" {
+				editor = "open"
+			} else {
+				editor = "xdg-open"
+			}
 		}
 
 		cmd := exec.Command(editor, fModel.SelectedPath)
@@ -87,7 +111,7 @@ func main() {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
-			log.Fatal(err)
+			log.Printf("Editor exited with error: %v\n", err)
 		}
 	}
 }
