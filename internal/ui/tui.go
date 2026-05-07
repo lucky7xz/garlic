@@ -22,6 +22,7 @@ const (
 	stateInsertTyping
 	stateInsertConfirm
 	stateMoving
+	stateRenaming
 	stateTooSmall
 )
 
@@ -55,6 +56,7 @@ type Model struct {
 	ActionTarget domain.Project
 	DelInput     string
 	InsertInput  string
+	RenameInput  string
 	ErrorMsg     string
 
 	// Styles
@@ -283,6 +285,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// --- RENAME STATE OVERRIDE ---
+		if m.State == stateRenaming {
+			switch msg.String() {
+			case "esc", "ctrl+c":
+				m.State = stateNormal
+				m.RenameInput = ""
+			case "enter":
+				newName := strings.TrimSpace(m.RenameInput)
+				if len(newName) > 0 {
+					if err := filesystem.RenameProject(m.ActionTarget.Path, newName); err == nil {
+						m.Boards[m.ActiveBoard] = filesystem.ScanBoard(currentBoard.Opts)
+					} else {
+						m.ErrorMsg = err.Error()
+					}
+				}
+				m.State = stateNormal
+				m.RenameInput = ""
+			case "backspace":
+				if len(m.RenameInput) > 0 {
+					m.RenameInput = m.RenameInput[:len(m.RenameInput)-1]
+				}
+			case "space":
+				m.RenameInput += " "
+			default:
+				s := msg.String()
+				if len(s) == 1 && strings.ContainsAny(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.") {
+					m.RenameInput += s
+				}
+			}
+			return m, nil
+		}
+
 		// --- NORMAL NAVIGATION STATE ---
 		modR := m.AltModifier + "+r"
 		modEnter := m.AltModifier + "+enter"
@@ -295,6 +329,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			m.ShowHidden = !m.ShowHidden
 			m.GridCursor.Status, m.GridCursor.Category, m.GridCursor.Project = 0, 0, 0
+
+		case "e":
+			if len(currentBoard.CategoryOrder) > 0 && len(currentBoard.Statuses) > 0 {
+				activeGrid := currentBoard.ActiveGrid(m.ShowHidden)
+				cat := currentBoard.CategoryOrder[m.GridCursor.Category]
+				stat := currentBoard.Statuses[m.GridCursor.Status]
+				projectsInCell := activeGrid[stat][cat]
+				if len(projectsInCell) > 0 && m.GridCursor.Project < len(projectsInCell) {
+					m.State = stateRenaming
+					m.ActionTarget = projectsInCell[m.GridCursor.Project]
+					ext := ".md"
+					if strings.HasSuffix(m.ActionTarget.Path, ".clove.md") {
+						ext = ".clove.md"
+					}
+					m.RenameInput = strings.TrimSuffix(m.ActionTarget.Name, ext)
+				}
+			}
 
 		case "m":
 			if len(currentBoard.CategoryOrder) > 0 && len(currentBoard.Statuses) > 0 {
@@ -669,9 +720,12 @@ func (m Model) View() string {
 		warningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFA500")).Bold(true).Align(lipgloss.Center)
 		newStatus := currentBoard.Statuses[m.GridCursor.Status]
 		footerStr = warningStyle.Render(fmt.Sprintf("MOVING %s TO %s... (enter: drop • esc: cancel)", m.ActionTarget.Name, newStatus)) + "\n"
+	} else if m.State == stateRenaming {
+		insertStyle := m.TitleStyle.Copy().Align(lipgloss.Center)
+		footerStr = insertStyle.Render(fmt.Sprintf("RENAME: %s_", m.RenameInput)) + "\n"
 	} else {
 		line1 := "arrows/hjkl: move • enter: select • r: resource dir • o/p: switch boards • tab: toggle view"
-		line2 := "m: move • u: hide/unhide • i: insert • del: purge • q: quit"
+		line2 := "m: move • u: hide/unhide • i: insert • e: rename • del: purge • q: quit"
 		footerStr = m.HelpStyle.Align(lipgloss.Center).Render(line1+"\n"+line2+"\n* dedicated resources found") + "\n"
 	}
 
