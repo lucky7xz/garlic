@@ -5,6 +5,13 @@ theme = "jade"
 #theme = "everforest"
 #theme = "orasaka"
 
+# ┌─ Async Apps ─────────────────────────────────────────────────────────────┐
+# │ Applications that should launch in the background (detached from the terminal).
+# │ WARNING: Do NOT add TUI/terminal apps (like vim, micro, or glow) to this list! 
+# │ They require a terminal to draw their interface and will fail or glitch if run asynchronously.
+# └──────────────────────────────────────────────────────────────────────────┘
+async_apps = ["xdg-open", "open", "dolphin", "gedit", "code", "nautilus", "thunar", "kate"]
+
 # ┌─ Editor ─────────────────────────────────────────────────────────────────┐
 # │ Text editor to use when opening files (overridden by $EDITOR)
 # └──────────────────────────────────────────────────────────────────────────┘
@@ -30,7 +37,6 @@ alt_file_manager = "dolphin"
 # └──────────────────────────────────────────────────────────────────────────┘
 alt_modifier = "alt"
 
-
 # ┌─ Full Bulb ──────────────────────────────────────────────────────────────┐
 # │ Scans all level 1 child directories and uses them as categories regardless of emptiness
 # └──────────────────────────────────────────────────────────────────────────┘
@@ -48,10 +54,3 @@ statuses = ["inProgress", "onHold"]
 [[semi-bulb]]
 path = "~/shara/decks"
 statuses = ["inProgress", "onHold"]
-
-# ┌─ Async Apps ─────────────────────────────────────────────────────────────┐
-# │ Applications that should launch in the background (detached from the terminal).
-# │ WARNING: Do NOT add TUI/terminal apps (like vim, micro, or glow) to this list! 
-# │ They require a terminal to draw their interface and will fail or glitch if run asynchronously.
-# └──────────────────────────────────────────────────────────────────────────┘
-async_apps = ["xdg-open", "open", "dolphin", "gedit", "code", "nautilus", "thunar", "kate"]

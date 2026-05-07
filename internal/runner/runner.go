@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lucky7xz/garlic/internal/config"
@@ -71,10 +72,31 @@ func resolveCmd(cfgCmd, envVar string) (string, []string) {
 func executeCmd(binary string, args []string, asyncApps []string) {
 	cmd := exec.Command(binary, args...)
 	if isAsync(binary, asyncApps) {
+		// TOTAL DETACHMENT: New session, new group, no controlling terminal.
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Setsid: true,
+		}
+
+		// BLACK HOLE: Explicitly route all output to /dev/null to stop bleeding.
+		devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+		if err == nil {
+			cmd.Stdout = devNull
+			cmd.Stderr = devNull
+		}
+
 		if err := cmd.Start(); err != nil {
 			log.Printf("Failed to start async command: %v\n", err)
+		} else {
+			// REAPING: Prevent zombie processes.
+			go func() {
+				_ = cmd.Wait()
+				if devNull != nil {
+					devNull.Close()
+				}
+			}()
 		}
 	} else {
+		// ATTACHMENT: Standard blocking execution for TUIs (vim, nano, etc.)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

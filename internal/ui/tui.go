@@ -133,6 +133,31 @@ func (m Model) Init() tea.Cmd {
 	return waitForUpdate(m.UpdateChan)
 }
 
+func (m Model) getSelectedProject() (domain.Project, bool) {
+	currentBoard := m.Boards[m.ActiveBoard]
+	if len(currentBoard.CategoryOrder) == 0 || len(currentBoard.Statuses) == 0 {
+		return domain.Project{}, false
+	}
+	activeGrid := currentBoard.ActiveGrid(m.ShowHidden)
+	cat := currentBoard.CategoryOrder[m.GridCursor.Category]
+	stat := currentBoard.Statuses[m.GridCursor.Status]
+	projects := activeGrid[stat][cat]
+	if len(projects) > 0 && m.GridCursor.Project < len(projects) {
+		return projects[m.GridCursor.Project], true
+	}
+	return domain.Project{}, false
+}
+
+func (m Model) resourcePath(p domain.Project) string {
+	currentBoard := m.Boards[m.ActiveBoard]
+	name := strings.TrimSuffix(p.Name, currentBoard.Opts.Extension)
+	path := filepath.Join(currentBoard.Opts.Path, p.Category, name)
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		return path
+	}
+	return filepath.Join(currentBoard.Opts.Path, p.Category)
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	currentBoard := &m.Boards[m.ActiveBoard]
 
@@ -343,63 +368,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.GridCursor.Status, m.GridCursor.Category, m.GridCursor.Project = 0, 0, 0
 
 		case "e":
-			if len(currentBoard.CategoryOrder) > 0 && len(currentBoard.Statuses) > 0 {
-				activeGrid := currentBoard.ActiveGrid(m.ShowHidden)
-				cat := currentBoard.CategoryOrder[m.GridCursor.Category]
-				stat := currentBoard.Statuses[m.GridCursor.Status]
-				projectsInCell := activeGrid[stat][cat]
-				if len(projectsInCell) > 0 && m.GridCursor.Project < len(projectsInCell) {
-					m.State = stateRenaming
-					m.ActionTarget = projectsInCell[m.GridCursor.Project]
-					ext := ".md"
-					if strings.HasSuffix(m.ActionTarget.Path, ".clove.md") {
-						ext = ".clove.md"
-					}
-					m.RenameInput = strings.TrimSuffix(m.ActionTarget.Name, ext)
-				}
+			if p, ok := m.getSelectedProject(); ok {
+				m.State, m.ActionTarget = stateRenaming, p
+				m.RenameInput = strings.TrimSuffix(p.Name, currentBoard.Opts.Extension)
 			}
 
 		case "m":
-			if len(currentBoard.CategoryOrder) > 0 && len(currentBoard.Statuses) > 0 {
-				activeGrid := currentBoard.ActiveGrid(m.ShowHidden)
-				cat := currentBoard.CategoryOrder[m.GridCursor.Category]
-				stat := currentBoard.Statuses[m.GridCursor.Status]
-				projectsInCell := activeGrid[stat][cat]
-				if len(projectsInCell) > 0 && m.GridCursor.Project < len(projectsInCell) {
-					m.State = stateMoving
-					m.ActionTarget = projectsInCell[m.GridCursor.Project]
-				}
+			if p, ok := m.getSelectedProject(); ok {
+				m.State, m.ActionTarget = stateMoving, p
 			}
 
 		case "u":
-			if len(currentBoard.CategoryOrder) > 0 && len(currentBoard.Statuses) > 0 {
-				cat := currentBoard.CategoryOrder[m.GridCursor.Category]
-				stat := currentBoard.Statuses[m.GridCursor.Status]
-				activeGrid := currentBoard.ActiveGrid(m.ShowHidden)
-				projectsInCell := activeGrid[stat][cat]
-				if len(projectsInCell) > 0 && m.GridCursor.Project < len(projectsInCell) {
-					m.State = stateHiding
-					m.ActionTarget = projectsInCell[m.GridCursor.Project]
-				}
+			if p, ok := m.getSelectedProject(); ok {
+				m.State, m.ActionTarget = stateHiding, p
 			}
 
 		case "i":
 			if len(currentBoard.CategoryOrder) > 0 && len(currentBoard.Statuses) > 0 {
-				m.State = stateInsertTyping
-				m.InsertInput = ""
+				m.State, m.InsertInput = stateInsertTyping, ""
 			}
 
 		case "delete":
-			if len(currentBoard.CategoryOrder) > 0 && len(currentBoard.Statuses) > 0 {
-				cat := currentBoard.CategoryOrder[m.GridCursor.Category]
-				stat := currentBoard.Statuses[m.GridCursor.Status]
-				activeGrid := currentBoard.ActiveGrid(m.ShowHidden)
-				projectsInCell := activeGrid[stat][cat]
-				if len(projectsInCell) > 0 && m.GridCursor.Project < len(projectsInCell) {
-					m.State = stateDeleting
-					m.ActionTarget = projectsInCell[m.GridCursor.Project]
-					m.DelInput = ""
-				}
+			if p, ok := m.getSelectedProject(); ok {
+				m.State, m.ActionTarget, m.DelInput = stateDeleting, p, ""
 			}
 
 		case "o":
@@ -420,41 +411,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "right", "l", "d":
 			m.moveRight(currentBoard)
 		case "r", modR:
-			if len(currentBoard.CategoryOrder) > 0 && len(currentBoard.Statuses) > 0 {
-				cat := currentBoard.CategoryOrder[m.GridCursor.Category]
-				stat := currentBoard.Statuses[m.GridCursor.Status]
-				activeGrid := currentBoard.ActiveGrid(m.ShowHidden)
-				projectsInCell := activeGrid[stat][cat]
-				if len(projectsInCell) > 0 && m.GridCursor.Project < len(projectsInCell) {
-					p := projectsInCell[m.GridCursor.Project]
-					baseName := strings.TrimSuffix(p.Name, currentBoard.Opts.Extension)
-					hypotheticalPath := filepath.Join(currentBoard.Opts.Path, cat, baseName)
-
-					if info, err := os.Stat(hypotheticalPath); err == nil && info.IsDir() {
-						m.ResourcePath = hypotheticalPath
-					} else {
-						m.ResourcePath = filepath.Join(currentBoard.Opts.Path, cat)
-					}
-					if msg.String() == modR {
-						m.UseAlt = true
-					}
-					return m, tea.Quit
+			if p, ok := m.getSelectedProject(); ok {
+				m.ResourcePath = m.resourcePath(p)
+				if msg.String() == modR {
+					m.UseAlt = true
 				}
+				return m, tea.Quit
 			}
 
 		case "enter", " ", modEnter, modSpace:
-			if len(currentBoard.CategoryOrder) > 0 && len(currentBoard.Statuses) > 0 {
-				cat := currentBoard.CategoryOrder[m.GridCursor.Category]
-				stat := currentBoard.Statuses[m.GridCursor.Status]
-				activeGrid := currentBoard.ActiveGrid(m.ShowHidden)
-				projectsInCell := activeGrid[stat][cat]
-				if len(projectsInCell) > 0 && m.GridCursor.Project < len(projectsInCell) {
-					m.SelectedPath = projectsInCell[m.GridCursor.Project].Path
-					if msg.String() == modEnter || msg.String() == modSpace {
-						m.UseAlt = true
-					}
-					return m, tea.Quit
+			if p, ok := m.getSelectedProject(); ok {
+				m.SelectedPath = p.Path
+				if msg.String() == modEnter || msg.String() == modSpace {
+					m.UseAlt = true
 				}
+				return m, tea.Quit
 			}
 		}
 	}
