@@ -43,6 +43,8 @@ type Model struct {
 	TermHeight   int
 	GridCursor   cursorState
 	SavedCursors []cursorState
+	UseAlt       bool
+	AltModifier  string
 
 	// Watcher
 	UpdateChan <-chan []domain.Board
@@ -120,6 +122,7 @@ func InitialModel(config domain.Config) Model {
 		TermHeight:   height,
 		SavedCursors: make([]cursorState, len(boards)),
 		UpdateChan:   updateChan,
+		AltModifier:  config.AltModifier,
 	}
 }
 
@@ -281,6 +284,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// --- NORMAL NAVIGATION STATE ---
+		modR := m.AltModifier + "+r"
+		modEnter := m.AltModifier + "+enter"
+		modSpace := m.AltModifier + "+ "
+
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
@@ -349,7 +356,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.moveLeft(currentBoard)
 		case "right", "l", "d":
 			m.moveRight(currentBoard)
-		case "r":
+		case "r", modR:
 			if len(currentBoard.CategoryOrder) > 0 && len(currentBoard.Statuses) > 0 {
 				cat := currentBoard.CategoryOrder[m.GridCursor.Category]
 				stat := currentBoard.Statuses[m.GridCursor.Status]
@@ -365,11 +372,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					} else {
 						m.ResourcePath = filepath.Join(currentBoard.Opts.Path, cat)
 					}
+					if msg.String() == modR {
+						m.UseAlt = true
+					}
 					return m, tea.Quit
 				}
 			}
 
-		case "enter", " ":
+		case "enter", " ", modEnter, modSpace:
 			if len(currentBoard.CategoryOrder) > 0 && len(currentBoard.Statuses) > 0 {
 				cat := currentBoard.CategoryOrder[m.GridCursor.Category]
 				stat := currentBoard.Statuses[m.GridCursor.Status]
@@ -377,6 +387,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				projectsInCell := activeGrid[stat][cat]
 				if len(projectsInCell) > 0 && m.GridCursor.Project < len(projectsInCell) {
 					m.SelectedPath = projectsInCell[m.GridCursor.Project].Path
+					if msg.String() == modEnter || msg.String() == modSpace {
+						m.UseAlt = true
+					}
 					return m, tea.Quit
 				}
 			}

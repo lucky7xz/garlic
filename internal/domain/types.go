@@ -44,11 +44,14 @@ type BoardOptions struct {
 }
 
 type Config struct {
-	Theme       string       `toml:"theme"`
-	FullBulbs   []BulbConfig `toml:"full-bulb"`
-	SemiBulbs   []BulbConfig `toml:"semi-bulb"`
-	Editor      string       `toml:"editor"`
-	FileManager string       `toml:"file_manager"`
+	Theme          string       `toml:"theme"`
+	FullBulbs      []BulbConfig `toml:"full-bulb"`
+	SemiBulbs      []BulbConfig `toml:"semi-bulb"`
+	Editor         string       `toml:"editor"`
+	FileManager    string       `toml:"file_manager"`
+	AltModifier    string       `toml:"alt_modifier"`
+	AltEditor      string       `toml:"alt_editor"`
+	AltFileManager string       `toml:"alt_file_manager"`
 }
 
 func (c Config) GetBoardOptions() []BoardOptions {

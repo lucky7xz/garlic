@@ -11,6 +11,13 @@ editor = "micro"
 # File manager to use when opening resource directories 'r' (overridden by $FILEMANAGER)
 file_manager = "yazi"
 
+# Modifier key for alternative commands (e.g., "alt", "ctrl")
+alt_modifier = "alt"
+# Alternative editor (e.g. use alt+enter to open)
+alt_editor = "vim"
+# Alternative file manager (e.g. use alt+r to open)
+alt_file_manager = "dolphin"
+
 # Scans all level 1 child directories and uses them as categories regardless of emptiness
 [[full-bulb]]
 path = "~/shara/epics"

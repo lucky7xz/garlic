@@ -1,0 +1,165 @@
+package runner
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/lucky7xz/garlic/internal/config"
+	"github.com/lucky7xz/garlic/internal/ui"
+)
+
+func Run() {
+	if len(os.Args) > 1 && os.Args[1] == "init" {
+		initDemo()
+		return
+	}
+
+	for {
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			log.Fatalf("Error loading configuration: %v", err)
+		}
+
+		themes, err := config.LoadThemes()
+		if err != nil {
+			log.Fatalf("Error loading themes: %v", err)
+		}
+
+		themeName := cfg.Theme
+		if themeName == "" {
+			themeName = "dracula"
+		}
+
+		theme, ok := themes[themeName]
+		if !ok {
+			log.Printf("Theme '%s' not found, defaulting to 'dracula'", themeName)
+			theme = themes["dracula"]
+		}
+
+		m := ui.InitialModel(cfg)
+		ui.ApplyTheme(theme, &m)
+
+		p := tea.NewProgram(m, tea.WithAltScreen())
+		finalModel, err := p.Run()
+		if err != nil {
+			log.Fatalf("Error running program: %v", err)
+		}
+
+		fModel, ok := finalModel.(ui.Model)
+		if !ok || (fModel.SelectedPath == "" && fModel.ResourcePath == "") {
+			break
+		}
+
+		if fModel.ResourcePath != "" {
+			var fm string
+			if fModel.UseAlt {
+				fm = cfg.AltFileManager
+			} else {
+				fm = os.Getenv("FILEMANAGER")
+				if fm == "" {
+					fm = cfg.FileManager
+				}
+			}
+
+			if fm != "" {
+				if _, err := exec.LookPath(fm); err != nil {
+					log.Printf("Warning: configured file manager '%s' not found, falling back", fm)
+					fm = ""
+				}
+			}
+
+			if fm == "" {
+				if runtime.GOOS == "darwin" {
+					fm = "open"
+				} else {
+					fm = "xdg-open"
+				}
+			}
+
+			cmd := exec.Command(fm, fModel.ResourcePath)
+			baseCmd := filepath.Base(fm)
+			if baseCmd != "xdg-open" && baseCmd != "open" && baseCmd != "dolphin" {
+				cmd.Stdin = os.Stdin
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+			}
+			
+			if err := cmd.Run(); err != nil {
+				log.Printf("Failed to orchestrate file manager: %v\n", err)
+			}
+			continue
+		}
+
+		var editor string
+		if fModel.UseAlt {
+			editor = cfg.AltEditor
+		} else {
+			editor = os.Getenv("EDITOR")
+			if editor == "" {
+				editor = cfg.Editor
+			}
+		}
+
+		if editor != "" {
+			if _, err := exec.LookPath(editor); err != nil {
+				log.Printf("Warning: configured editor '%s' not found, falling back", editor)
+				editor = ""
+			}
+		}
+
+		if editor == "" {
+			if runtime.GOOS == "darwin" {
+				editor = "open"
+			} else {
+				editor = "xdg-open"
+			}
+		}
+
+		cmd := exec.Command(editor, fModel.SelectedPath)
+		baseCmd := filepath.Base(editor)
+		if baseCmd != "xdg-open" && baseCmd != "open" && baseCmd != "code" {
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+		}
+		
+		if err := cmd.Run(); err != nil {
+			log.Printf("Editor exited with error: %v\n", err)
+		}
+	}
+}
+
+func initDemo() {
+	home, _ := os.UserHomeDir()
+	base := filepath.Join(home, "shara")
+
+	if _, err := os.Stat(base); err == nil {
+		fmt.Printf("Demo directory %s already exists.\n", base)
+		return
+	}
+
+	files := map[string]string{
+		"epics/fitness/running.md":          "#statustag-inProgress\n",
+		"epics/learning/golang.md":          "#statustag-toDo\n",
+		"scripts/garlic/release.clove.md":   "#statustag-onHold\n",
+		"scripts/garlic/revise.clove.md":    "#statustag-inProgress\n",
+		"scripts/drako/revise.clove.md":     "#statustag-onHold\n",
+		"decks/ggml_deck/llamacpp.clove.md": "#statustag-onHold\n",
+	}
+
+	for path, content := range files {
+		fullPath := filepath.Join(base, path)
+		os.MkdirAll(filepath.Dir(fullPath), 0755)
+		os.WriteFile(fullPath, []byte(content), 0644)
+	}
+
+	// Create an empty resource directory for the demo
+	os.MkdirAll(filepath.Join(base, "epics/fitness/running"), 0755)
+
+	fmt.Printf("Demo instantiated at %s\n", base)
+}

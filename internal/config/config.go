@@ -64,6 +64,10 @@ func LoadConfig() (domain.Config, error) {
 		return domain.Config{}, fmt.Errorf("failed to decode config file: %w", err)
 	}
 
+	if config.AltModifier == "" {
+		config.AltModifier = "alt"
+	}
+
 	usr, err := user.Current()
 	if err != nil {
 		log.Fatalf("could not get current user: %v", err)
