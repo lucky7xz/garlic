@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lucky7xz/garlic/internal/config"
@@ -21,6 +22,38 @@ func isAsync(cmd string, asyncList []string) bool {
 		}
 	}
 	return false
+}
+
+func resolveCmd(cfgCmd, envVar string) (string, []string) {
+	cmdStr := os.Getenv(envVar)
+	if cmdStr == "" {
+		cmdStr = cfgCmd
+	}
+
+	if cmdStr == "" {
+		if runtime.GOOS == "darwin" {
+			return "open", nil
+		}
+		return "xdg-open", nil
+	}
+
+	parts := strings.Fields(cmdStr)
+	if len(parts) == 0 {
+		return "xdg-open", nil
+	}
+
+	binary := parts[0]
+	args := parts[1:]
+
+	if _, err := exec.LookPath(binary); err != nil {
+		log.Printf("Warning: command '%s' not found, falling back to system default", binary)
+		if runtime.GOOS == "darwin" {
+			return "open", nil
+		}
+		return "xdg-open", nil
+	}
+
+	return binary, args
 }
 
 func Run() {
@@ -66,34 +99,19 @@ func Run() {
 		}
 
 		if fModel.ResourcePath != "" {
-			var fm string
+			var binary string
+			var args []string
+
 			if fModel.UseAlt {
-				fm = cfg.AltFileManager
+				binary, args = resolveCmd(cfg.AltFileManager, "")
 			} else {
-				fm = os.Getenv("FILEMANAGER")
-				if fm == "" {
-					fm = cfg.FileManager
-				}
+				binary, args = resolveCmd(cfg.FileManager, "FILEMANAGER")
 			}
 
-			if fm != "" {
-				if _, err := exec.LookPath(fm); err != nil {
-					log.Printf("Warning: configured file manager '%s' not found, falling back", fm)
-					fm = ""
-				}
-			}
+			args = append(args, fModel.ResourcePath)
+			cmd := exec.Command(binary, args...)
 
-			if fm == "" {
-				if runtime.GOOS == "darwin" {
-					fm = "open"
-				} else {
-					fm = "xdg-open"
-				}
-			}
-
-			cmd := exec.Command(fm, fModel.ResourcePath)
-			
-			if isAsync(fm, cfg.AsyncApps) {
+			if isAsync(binary, cfg.AsyncApps) {
 				if err := cmd.Start(); err != nil {
 					log.Printf("Failed to start async file manager: %v\n", err)
 				}
@@ -108,34 +126,19 @@ func Run() {
 			continue
 		}
 
-		var editor string
+		var binary string
+		var args []string
+
 		if fModel.UseAlt {
-			editor = cfg.AltEditor
+			binary, args = resolveCmd(cfg.AltEditor, "")
 		} else {
-			editor = os.Getenv("EDITOR")
-			if editor == "" {
-				editor = cfg.Editor
-			}
+			binary, args = resolveCmd(cfg.Editor, "EDITOR")
 		}
 
-		if editor != "" {
-			if _, err := exec.LookPath(editor); err != nil {
-				log.Printf("Warning: configured editor '%s' not found, falling back", editor)
-				editor = ""
-			}
-		}
+		args = append(args, fModel.SelectedPath)
+		cmd := exec.Command(binary, args...)
 
-		if editor == "" {
-			if runtime.GOOS == "darwin" {
-				editor = "open"
-			} else {
-				editor = "xdg-open"
-			}
-		}
-
-		cmd := exec.Command(editor, fModel.SelectedPath)
-		
-		if isAsync(editor, cfg.AsyncApps) {
+		if isAsync(binary, cfg.AsyncApps) {
 			if err := cmd.Start(); err != nil {
 				log.Printf("Editor (async) exited with error: %v\n", err)
 			}
