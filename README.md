@@ -151,9 +151,10 @@ Garlic handles the "where", but leaves the "how" to your favorite terminal tools
 - `r` – Open resource folder in your file manager (projects with resources are marked with a themed `*`)
 
 ### Management
-- `m` – cycle through available status tags (moves the project)
 - `i` – create a new task file in the current location
+- `m` – cycle through available status tags (moves the project)
 - `u` – toggle hidden state
+- `e` – edit filename 
 - `Del` – delete the selected file (confirmation required)
 
 ## 🎨 Theming
