@@ -13,6 +13,16 @@ import (
 	"github.com/lucky7xz/garlic/internal/ui"
 )
 
+func isAsync(cmd string, asyncList []string) bool {
+	base := filepath.Base(cmd)
+	for _, app := range asyncList {
+		if app == base {
+			return true
+		}
+	}
+	return false
+}
+
 func Run() {
 	if len(os.Args) > 1 && os.Args[1] == "init" {
 		initDemo()
@@ -82,15 +92,18 @@ func Run() {
 			}
 
 			cmd := exec.Command(fm, fModel.ResourcePath)
-			baseCmd := filepath.Base(fm)
-			if baseCmd != "xdg-open" && baseCmd != "open" && baseCmd != "dolphin" {
+			
+			if isAsync(fm, cfg.AsyncApps) {
+				if err := cmd.Start(); err != nil {
+					log.Printf("Failed to start async file manager: %v\n", err)
+				}
+			} else {
 				cmd.Stdin = os.Stdin
 				cmd.Stdout = os.Stdout
 				cmd.Stderr = os.Stderr
-			}
-			
-			if err := cmd.Run(); err != nil {
-				log.Printf("Failed to orchestrate file manager: %v\n", err)
+				if err := cmd.Run(); err != nil {
+					log.Printf("Failed to orchestrate file manager: %v\n", err)
+				}
 			}
 			continue
 		}
@@ -121,15 +134,18 @@ func Run() {
 		}
 
 		cmd := exec.Command(editor, fModel.SelectedPath)
-		baseCmd := filepath.Base(editor)
-		if baseCmd != "xdg-open" && baseCmd != "open" && baseCmd != "code" {
+		
+		if isAsync(editor, cfg.AsyncApps) {
+			if err := cmd.Start(); err != nil {
+				log.Printf("Editor (async) exited with error: %v\n", err)
+			}
+		} else {
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
-		}
-		
-		if err := cmd.Run(); err != nil {
-			log.Printf("Editor exited with error: %v\n", err)
+			if err := cmd.Run(); err != nil {
+				log.Printf("Editor exited with error: %v\n", err)
+			}
 		}
 	}
 }

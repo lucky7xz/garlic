@@ -5,9 +5,10 @@ theme = "jade"
 #theme = "everforest"
 #theme = "orasaka"
 
+# -------------------------------
+# -------------------------------
 # Text editor to use when opening files (overridden by $EDITOR)
 editor = "micro"
-
 # File manager to use when opening resource directories 'r' (overridden by $FILEMANAGER)
 file_manager = "yazi"
 
@@ -18,6 +19,8 @@ alt_editor = "vim"
 # Alternative file manager (e.g. use alt+r to open)
 alt_file_manager = "dolphin"
 
+# -------------------------------
+# -------------------------------
 # Scans all level 1 child directories and uses them as categories regardless of emptiness
 [[full-bulb]]
 path = "~/shara/epics"
@@ -31,3 +34,10 @@ statuses = ["inProgress", "onHold"]
 [[semi-bulb]]
 path = "~/shara/decks"
 statuses = ["inProgress", "onHold"]
+
+# -------------------------------
+# -------------------------------
+
+# Applications that should launch in the background (detached from the terminal)
+async_apps = ["xdg-open", "open", "dolphin", "gedit", "code", "nautilus", "thunar", "kate"]
+

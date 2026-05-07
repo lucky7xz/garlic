@@ -52,6 +52,7 @@ type Config struct {
 	AltModifier    string       `toml:"alt_modifier"`
 	AltEditor      string       `toml:"alt_editor"`
 	AltFileManager string       `toml:"alt_file_manager"`
+	AsyncApps      []string     `toml:"async_apps"`
 }
 
 func (c Config) GetBoardOptions() []BoardOptions {

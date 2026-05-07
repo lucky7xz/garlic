@@ -107,6 +107,16 @@ Configure paths, editors, and file manager in `~/.config/garlic/config.toml`.
 editor = "micro"
 file_manager = "yazi"
 
+# Alternative commands (use alt+enter or alt+r)
+alt_editor = "vim"
+alt_file_manager = "dolphin"
+
+# Modifier for alternatives (default: "alt")
+alt_modifier = "alt"
+
+# Apps that should launch in the background (GUI tools)
+async_apps = ["xdg-open", "open", "dolphin", "gedit", "code"]
+
 [[full-bulb]]
 path = "~/shara/epics"
 statuses = ["inProgress", "onHold", "toDo"]
@@ -118,7 +128,11 @@ statuses = ["inProgress", "onHold"]
 [[semi-bulb]]
 path = "~/shara/decks"
 statuses = ["inProgress", "onHold"]
+
 ```
+
+> [!IMPORTANT]
+> **Async Launching:** Garlic now supports detached launching for GUI applications. Check the [default config template](internal/config/bootstrap/config.toml) for the new `async_apps`, `alt_editor`, and `alt_file_manager` fields. If you are upgrading, please update your `config.toml` to include these fields.
 
 > [!NOTE]
 > The default configuration uses [micro](https://github.com/zyedidia/micro) as the editor and [yazi](https://github.com/sxyazi/yazi) as the file manager. If `editor` or `file_manager` are not specified in the config, Garlic will fallback to your system's `$EDITOR` and `$FILEMANAGER` (defaulting to `xdg-open` or `open` if unset).
