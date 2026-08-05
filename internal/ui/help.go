@@ -11,31 +11,42 @@ type helpEntry struct {
 	desc string
 }
 
-func (m Model) helpMenu() string {
-	entries := []helpEntry{
-		{"arrows/hjkl", "navigate"},
-		{"enter/space", "open"},
-		{"o/p", "cycle boards"},
-		{"tab", "toglge hidden"},
-		{"r", "open resources"},
-		{"i", "insert file"},
-		{"e", "edit filename"},
-		{"m", "move file"},
-		{"u", "hide/unhide"},
-		{"Del", "delete file"},
-		{"q/esc", "close"},
-	}
+var helpEntries = []helpEntry{
+	{"arrows/hjkl", "navigate"},
+	{"enter/space", "open"},
+	{"o/p", "cycle boards"},
+	{"tab", "toglge hidden"},
+	{"r", "open resources"},
+	{"i", "insert file"},
+	{"e", "edit filename"},
+	{"m", "move file"},
+	{"u", "hide/unhide"},
+	{"Del", "delete file"},
+	{"q/esc", "close"},
+}
 
-	// Adaptive column count
-	numCols := 1
-	if m.TermWidth > 80 {
-		numCols = 3
-	} else if m.TermWidth > 45 {
-		numCols = 2
+// helpMenu renders the overlay at the widest column count that actually fits.
+// Measuring beats guessing at breakpoints: the two-column layout needs a little
+// over 60 columns, so the old "> 45" threshold produced an overlay wider than
+// the terminal it was drawn into.
+func (m Model) helpMenu() string {
+	for numCols := 3; numCols > 1; numCols-- {
+		overlay := m.helpMenuCols(numCols)
+		if lipgloss.Width(overlay) <= m.TermWidth {
+			return overlay
+		}
 	}
+	return m.helpMenuCols(1)
+}
+
+func (m Model) helpMenuCols(numCols int) string {
+	entries := helpEntries
 
 	if len(entries) < numCols {
 		numCols = len(entries)
+	}
+	if numCols < 1 {
+		numCols = 1
 	}
 
 	maxKeyLen := 0

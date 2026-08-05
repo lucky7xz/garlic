@@ -27,6 +27,43 @@ const (
 	stateTooSmall
 )
 
+// Layout floors, derived from what the renderer actually needs rather than
+// picked by feel. The board degrades gracefully as space shrinks (columns
+// scroll horizontally via MaxVisible, statuses collapse to one via vertical
+// focus), so the gate only has to catch sizes where nothing can be drawn.
+//
+//	minBoardWidth:  a single grid column is ColWidth+2 = 15 wide, but the
+//	                header prefix ("[n/m] Workspace: ") and footer hint
+//	                ("?: help • q: quit") are both 17, so they set the floor.
+//	minBoardHeight: header block (3) + one status block (title 1, bordered
+//	                category header 3, separator 1, bordered project row 3,
+//	                padding 1) + footer block (2) = 14.
+const (
+	minBoardWidth  = 20
+	minBoardHeight = 14
+)
+
+// tooSmallToRender reports whether the board can be drawn at all at this size.
+func tooSmallToRender(width, height int) bool {
+	return width < minBoardWidth || height < minBoardHeight
+}
+
+// helpOverlayFloor is the size of the most compact help overlay there is, its
+// single-column form. It is measured rather than declared, so it cannot drift
+// out of step with the entry list.
+func (m Model) helpOverlayFloor() (width, height int) {
+	overlay := m.helpMenuCols(1)
+	return lipgloss.Width(overlay), lipgloss.Height(overlay)
+}
+
+// fitsHelpOverlay reports whether the help overlay can be drawn without
+// overflowing the terminal. Its floor is higher than the board's, so there is a
+// band of sizes where the board is usable but help is not.
+func (m Model) fitsHelpOverlay() bool {
+	w, h := m.helpOverlayFloor()
+	return m.TermWidth >= w && m.TermHeight >= h
+}
+
 type cursorState struct {
 	Status   int
 	Category int
@@ -113,7 +150,7 @@ func InitialModel(config domain.Config) Model {
 	}
 
 	initialState := stateNormal
-	if width < 70 || height < 15 {
+	if tooSmallToRender(width, height) {
 		initialState = stateTooSmall
 	}
 
@@ -169,9 +206,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.TermWidth = msg.Width
 		m.TermHeight = msg.Height
-		if m.TermWidth < 70 || m.TermHeight < 15 {
+		if tooSmallToRender(m.TermWidth, m.TermHeight) {
 			m.State = stateTooSmall
 		} else if m.State == stateTooSmall {
+			m.State = stateNormal
+		}
+		// A resize can shrink the terminal below what the help overlay needs
+		// while the board itself still fits; drop back to the board.
+		if m.State == stateHelp && !m.fitsHelpOverlay() {
 			m.State = stateNormal
 		}
 	case tea.KeyMsg:
@@ -361,7 +403,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "?":
-			m.State = stateHelp
+			if m.fitsHelpOverlay() {
+				m.State = stateHelp
+			} else {
+				w, h := m.helpOverlayFloor()
+				m.ErrorMsg = fmt.Sprintf("Need %dx%d for help (have %dx%d)", w, h, m.TermWidth, m.TermHeight)
+			}
 
 		case "tab":
 			m.ShowHidden = !m.ShowHidden
@@ -539,7 +586,10 @@ func (m *Model) clampProjectCursor(b *domain.Board) {
 
 func (m Model) View() string {
 	if m.State == stateTooSmall {
-		return lipgloss.Place(m.TermWidth, m.TermHeight, lipgloss.Center, lipgloss.Center, "Terminal too small!")
+		// Kept to three short lines so the notice itself fits the sizes it reports on.
+		msg := fmt.Sprintf("Terminal too small\nneed %dx%d\nhave %dx%d",
+			minBoardWidth, minBoardHeight, m.TermWidth, m.TermHeight)
+		return lipgloss.Place(m.TermWidth, m.TermHeight, lipgloss.Center, lipgloss.Center, msg)
 	}
 	currentBoard := m.Boards[m.ActiveBoard]
 	activeGrid := currentBoard.ActiveGrid(m.ShowHidden)
@@ -561,10 +611,14 @@ func (m Model) View() string {
 	visibleCategories := currentBoard.CategoryOrder[m.GridCursor.Offset:endIdx]
 	sepWidth := (m.ColWidth + 2) * len(visibleCategories)
 
-	// Systematic Vertical Check: Estimate board height
-	totalHeight := 8 // Headers + Footer + Padding
+	// Systematic Vertical Check: count the lines this view is about to emit.
+	// This has to match the render below exactly. If it undercounts, focus mode
+	// stays off, the view falls through to the centered Place() at the bottom of
+	// this function, and content taller than the terminal is clipped at *both*
+	// ends -- which silently eats the "Status:" labels.
+	totalHeight := 5 // Header block (title + separator + blank) + footer block (hint + blank)
 	for _, status := range currentBoard.Statuses {
-		totalHeight += 5 // Status header + Category headers (3 lines) + Separator + Padding
+		totalHeight += 6 // Status title + category headers (3, bordered) + separator + trailing padding
 		maxRows := 0
 		for _, cat := range currentBoard.CategoryOrder {
 			if count := len(activeGrid[status][cat]); count > maxRows {
@@ -595,7 +649,10 @@ func (m Model) View() string {
 		activeTitleStyle = activeTitleStyle.Faint(true).Bold(false)
 	}
 	prefix := fmt.Sprintf("[%d/%d] Workspace: ", m.ActiveBoard+1, len(m.Boards))
-	headerStr := activeTitleStyle.Render(prefix) + currentBoard.Name + activeTitleStyle.Render(viewMode) + "\n" + m.SeparatorStyle.Faint(true).Render(strings.Repeat("─", sepWidth)) + "\n"
+	// The board name is arbitrary length, so it -- not the grid -- is what pushes
+	// the header past the terminal edge. Trim it to whatever the prefix leaves.
+	boardName := truncate(currentBoard.Name, m.TermWidth-lipgloss.Width(prefix)-lipgloss.Width(viewMode))
+	headerStr := activeTitleStyle.Render(prefix) + boardName + activeTitleStyle.Render(viewMode) + "\n" + m.SeparatorStyle.Faint(true).Render(strings.Repeat("─", sepWidth)) + "\n"
 
 	var gridRows []string
 	for statusIdx, status := range currentBoard.Statuses {
@@ -707,7 +764,11 @@ func (m Model) View() string {
 		insertStyle := m.TitleStyle.Copy().Align(lipgloss.Center)
 		footerStr = insertStyle.Render(fmt.Sprintf("RENAME: %s_", m.RenameInput)) + "\n"
 	} else {
-		footerStr = m.HelpStyle.Align(lipgloss.Center).Render("?: help • q: quit") + "\n"
+		hint := "?: help • q: quit"
+		if !m.fitsHelpOverlay() {
+			hint = "q: quit"
+		}
+		footerStr = m.HelpStyle.Align(lipgloss.Center).Render(hint) + "\n"
 	}
 
 	finalView := lipgloss.JoinVertical(lipgloss.Center, headerStr, gridStr, footerStr)
@@ -726,6 +787,9 @@ func (m Model) View() string {
 }
 
 func truncate(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
 	if max < 3 {
 		if len(s) > max {
 			return s[:max]
