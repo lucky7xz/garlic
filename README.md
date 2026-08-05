@@ -117,6 +117,8 @@ alt_editor = "glow -p"
 alt_file_manager = "dolphin"
 
 # Modifier for alternatives (default: "alt")
+# Does not affect workspace jumping: alt+1..9 is always bound, since terminals
+# cannot send ctrl+<digit> as a distinct key.
 alt_modifier = "alt"
 
 # Apps that should launch in the background (GUI tools)
@@ -147,7 +149,8 @@ statuses = ["inProgress", "onHold"]
 
 ### Navigation
 - `h/j/k/l` or arrows/wasd – move cursor
-- `o` / `p` – switch between different workspaces (Bulbs)
+- `o` / `p` – cycle between workspaces (Bulbs)
+- `alt+1` … `alt+9` – jump straight to a workspace by number. Numbering follows the order Garlic loads bulbs — all `full-bulb`s first, then all `semi-bulb`s — which is the `[2/3]` counter in the header
 - `tab` – toggle hidden view
 - `q` – quit Garlic
 

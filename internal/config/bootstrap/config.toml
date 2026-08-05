@@ -34,6 +34,13 @@ alt_file_manager = "dolphin"
 
 # ┌─ Alt Modifier ───────────────────────────────────────────────────────────┐
 # │ Modifier key for alternative commands (e.g., "alt", "ctrl")
+# │
+# │ Note: this does not affect jumping to a workspace by number. alt+1..9 is
+# │ always bound, because terminals cannot transmit ctrl+<digit> as a distinct
+# │ key. If you set this to something other than "alt", that modifier is
+# │ accepted for numbers too where the terminal supports it -- alt+1..9 keeps
+# │ working either way. Numbering follows load order: every [[full-bulb]]
+# │ first, then every [[semi-bulb]], matching the [n/m] counter in the header.
 # └──────────────────────────────────────────────────────────────────────────┘
 alt_modifier = "alt"
 

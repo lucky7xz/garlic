@@ -195,6 +195,41 @@ func (m Model) resourcePath(p domain.Project) string {
 	return filepath.Join(currentBoard.Opts.Path, p.Category)
 }
 
+// boardJumpTarget reports the 1-based workspace a key requests, if any.
+//
+// alt+N is always accepted: it is the only modifier terminals reliably transmit
+// alongside a digit. ctrl+1..9 has no distinct escape sequence at all, so
+// honoring AltModifier alone would leave the binding dead for anyone who set it
+// to "ctrl" -- even though ctrl+r, built the same way, does work. The configured
+// modifier is accepted as well when it differs, costing nothing.
+func (m Model) boardJumpTarget(key string) (int, bool) {
+	digit, ok := strings.CutPrefix(key, "alt+")
+	if !ok && m.AltModifier != "" && m.AltModifier != "alt" {
+		digit, ok = strings.CutPrefix(key, m.AltModifier+"+")
+	}
+	if !ok || len(digit) != 1 || digit[0] < '1' || digit[0] > '9' {
+		return 0, false
+	}
+	return int(digit[0] - '0'), true
+}
+
+// switchToBoard moves to a 0-based board index, parking the current cursor and
+// restoring the one saved for the destination.
+func (m *Model) switchToBoard(idx int) {
+	// SavedCursors is sized once in InitialModel, but RefreshMsg replaces
+	// m.Boards wholesale, so a watcher-driven change in board count can leave it
+	// short. Grow it here rather than indexing past the end.
+	for len(m.SavedCursors) < len(m.Boards) {
+		m.SavedCursors = append(m.SavedCursors, cursorState{})
+	}
+	if idx < 0 || idx >= len(m.Boards) {
+		return
+	}
+	m.SavedCursors[m.ActiveBoard] = m.GridCursor
+	m.ActiveBoard = idx
+	m.GridCursor = m.SavedCursors[m.ActiveBoard]
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	currentBoard := &m.Boards[m.ActiveBoard]
 
@@ -441,14 +476,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "o":
-			m.SavedCursors[m.ActiveBoard] = m.GridCursor
-			m.ActiveBoard = (m.ActiveBoard - 1 + len(m.Boards)) % len(m.Boards)
-			m.GridCursor = m.SavedCursors[m.ActiveBoard]
+			m.switchToBoard((m.ActiveBoard - 1 + len(m.Boards)) % len(m.Boards))
 
 		case "p":
-			m.SavedCursors[m.ActiveBoard] = m.GridCursor
-			m.ActiveBoard = (m.ActiveBoard + 1) % len(m.Boards)
-			m.GridCursor = m.SavedCursors[m.ActiveBoard]
+			m.switchToBoard((m.ActiveBoard + 1) % len(m.Boards))
 		case "up", "k", "w":
 			m.moveUp(currentBoard)
 		case "down", "j", "s":
@@ -473,6 +504,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.UseAlt = true
 				}
 				return m, tea.Quit
+			}
+
+		default:
+			if n, ok := m.boardJumpTarget(msg.String()); ok {
+				if n > len(m.Boards) {
+					m.ErrorMsg = fmt.Sprintf("No workspace %d (have %d)", n, len(m.Boards))
+				} else {
+					m.switchToBoard(n - 1)
+				}
 			}
 		}
 	}

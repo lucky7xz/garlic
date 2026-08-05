@@ -15,6 +15,7 @@ var helpEntries = []helpEntry{
 	{"arrows/hjkl", "navigate"},
 	{"enter/space", "open"},
 	{"o/p", "cycle boards"},
+	{"alt+1..9", "jump to workspace"},
 	{"tab", "toglge hidden"},
 	{"r", "open resources"},
 	{"i", "insert file"},
