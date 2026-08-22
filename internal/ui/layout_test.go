@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -9,7 +10,8 @@ import (
 )
 
 // board builds a board with the given statuses and categories, placing
-// projectsPerCell projects in every cell.
+// projectsPerCell projects in every cell. Paths are distinct per cell position so
+// that tests which look a project up by path have something to find.
 func board(statuses, categories []string, projectsPerCell int) domain.Board {
 	grid := make(map[string]map[string][]domain.Project)
 	for _, s := range statuses {
@@ -17,7 +19,12 @@ func board(statuses, categories []string, projectsPerCell int) domain.Board {
 		for _, c := range categories {
 			var ps []domain.Project
 			for i := 0; i < projectsPerCell; i++ {
-				ps = append(ps, domain.Project{Name: "proj.md", Category: c, Status: s})
+				ps = append(ps, domain.Project{
+					Name:     "proj.md",
+					Path:     fmt.Sprintf("/%s/%s/%d.md", s, c, i),
+					Category: c,
+					Status:   s,
+				})
 			}
 			grid[s][c] = ps
 		}

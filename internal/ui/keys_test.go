@@ -38,8 +38,16 @@ func multiBoardModel(n int, altModifier string) Model {
 func press(t *testing.T, m Model, key string) Model {
 	t.Helper()
 
+	named := map[string]tea.KeyType{
+		"tab":   tea.KeyTab,
+		"enter": tea.KeyEnter,
+		"esc":   tea.KeyEsc,
+	}
+
 	var msg tea.KeyMsg
-	if runes := []rune(key); len(runes) == 1 {
+	if t, ok := named[key]; ok {
+		msg = tea.KeyMsg{Type: t}
+	} else if runes := []rune(key); len(runes) == 1 {
 		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: runes}
 	} else if runes := []rune(key); len(runes) == 5 && key[:4] == "alt+" {
 		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: runes[4:], Alt: true}

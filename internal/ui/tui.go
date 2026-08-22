@@ -86,7 +86,8 @@ type Model struct {
 	AltModifier  string
 
 	// Watcher
-	UpdateChan <-chan []domain.Board
+	UpdateChan  <-chan []domain.Board
+	stopWatcher func()
 
 	// Data state toggles
 	ShowHidden   bool
@@ -131,7 +132,7 @@ func InitialModel(config domain.Config) Model {
 		boards = append(boards, filesystem.ScanBoard(opt))
 	}
 
-	updateChan, _ := filesystem.WatchBoards(boardOpts)
+	updateChan, stopWatcher, _ := filesystem.WatchBoards(boardOpts)
 
 	if len(boards) == 0 {
 		boards = append(boards, domain.Board{
@@ -162,12 +163,21 @@ func InitialModel(config domain.Config) Model {
 		TermHeight:   height,
 		SavedCursors: make([]cursorState, len(boards)),
 		UpdateChan:   updateChan,
+		stopWatcher:  stopWatcher,
 		AltModifier:  config.AltModifier,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
 	return waitForUpdate(m.UpdateChan)
+}
+
+// StopWatcher tears down this model's filesystem watcher. The runner calls it
+// once the TUI has quit, before the next lap builds a replacement.
+func (m Model) StopWatcher() {
+	if m.stopWatcher != nil {
+		m.stopWatcher()
+	}
 }
 
 func (m Model) getSelectedProject() (domain.Project, bool) {
@@ -228,6 +238,112 @@ func (m *Model) switchToBoard(idx int) {
 	m.SavedCursors[m.ActiveBoard] = m.GridCursor
 	m.ActiveBoard = idx
 	m.GridCursor = m.SavedCursors[m.ActiveBoard]
+}
+
+// Session is the position state that survives a trip out to the editor or file
+// manager. The runner throws the whole Model away and rebuilds it every time it
+// re-enters the TUI; this is what it carries across. It deliberately holds no
+// Boards and no watcher handle, so keeping one between laps keeps nothing else
+// alive.
+type Session struct {
+	ActiveBoard  int
+	GridCursor   cursorState
+	SavedCursors []cursorState
+	ShowHidden   bool
+	SelectedPath string
+}
+
+// Session snapshots where the cursor is, for Restore to re-establish once the
+// boards have been rescanned.
+func (m Model) Session() Session {
+	s := Session{
+		ActiveBoard:  m.ActiveBoard,
+		GridCursor:   m.GridCursor,
+		SavedCursors: append([]cursorState(nil), m.SavedCursors...),
+		ShowHidden:   m.ShowHidden,
+	}
+	// Read from the grid rather than m.SelectedPath, which only the editor path
+	// sets. Opening a resource folder with 'r' hands the file manager a directory
+	// and leaves SelectedPath empty, but the cursor is still on a project and
+	// that project is what we come back to.
+	if p, ok := m.getSelectedProject(); ok {
+		s.SelectedPath = p.Path
+	}
+	return s
+}
+
+// Restore puts the cursor back where a previous run left it. The boards have
+// been rescanned since, and files may have been renamed, deleted, hidden or
+// moved between statuses in the meantime, so nothing carried over is trusted:
+// the path is looked up afresh and the indices are clamped.
+func (m *Model) Restore(s Session) {
+	if len(m.Boards) == 0 {
+		return
+	}
+	m.ShowHidden = s.ShowHidden
+
+	// copy handles a board list that grew or shrank since the snapshot: a short
+	// source leaves the tail zeroed, a long one is truncated.
+	m.SavedCursors = make([]cursorState, len(m.Boards))
+	copy(m.SavedCursors, s.SavedCursors)
+
+	if s.ActiveBoard >= 0 && s.ActiveBoard < len(m.Boards) {
+		m.ActiveBoard = s.ActiveBoard
+		m.GridCursor = s.GridCursor
+	} else {
+		// The workspace went away -- the config was edited between laps. Fall
+		// back to the first board and the cursor last parked there.
+		m.ActiveBoard = 0
+		m.GridCursor = m.SavedCursors[0]
+	}
+
+	b := &m.Boards[m.ActiveBoard]
+	if !m.seekPath(b, s.SelectedPath) {
+		m.clampCursor(b)
+	}
+	m.RecalculateOffsets()
+}
+
+// seekPath moves the cursor onto the project with this path, reporting whether
+// the board still holds it. Editing a file's #statustag moves it to a different
+// status row, and following it there is what makes the cursor feel remembered
+// rather than merely restored.
+func (m *Model) seekPath(b *domain.Board, path string) bool {
+	if path == "" {
+		return false
+	}
+	grid := b.ActiveGrid(m.ShowHidden)
+	for statusIdx, status := range b.Statuses {
+		for catIdx, cat := range b.CategoryOrder {
+			for projIdx, p := range grid[status][cat] {
+				if p.Path == path {
+					m.GridCursor.Status = statusIdx
+					m.GridCursor.Category = catIdx
+					m.GridCursor.Project = projIdx
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// clampCursor pulls a cursor carried over from an earlier scan back inside the
+// board it now points at.
+func (m *Model) clampCursor(b *domain.Board) {
+	if m.GridCursor.Status >= len(b.Statuses) {
+		m.GridCursor.Status = len(b.Statuses) - 1
+	}
+	if m.GridCursor.Status < 0 {
+		m.GridCursor.Status = 0
+	}
+	if m.GridCursor.Category >= len(b.CategoryOrder) {
+		m.GridCursor.Category = len(b.CategoryOrder) - 1
+	}
+	if m.GridCursor.Category < 0 {
+		m.GridCursor.Category = 0
+	}
+	m.clampProjectCursor(b)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

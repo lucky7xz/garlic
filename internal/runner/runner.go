@@ -112,6 +112,11 @@ func Run() {
 		return
 	}
 
+	// Each lap rebuilds the model from scratch, so where the cursor was has to be
+	// handed forward explicitly. The zero value restores nothing, which is what
+	// the first lap wants.
+	var session ui.Session
+
 	for {
 		cfg, err := config.LoadConfig()
 		if err != nil {
@@ -136,6 +141,7 @@ func Run() {
 
 		m := ui.InitialModel(cfg)
 		ui.ApplyTheme(theme, &m)
+		m.Restore(session)
 
 		p := tea.NewProgram(m, tea.WithAltScreen())
 		finalModel, err := p.Run()
@@ -144,6 +150,13 @@ func Run() {
 		}
 
 		fModel, ok := finalModel.(ui.Model)
+		if ok {
+			// Both of these have to happen before the branches below: the resource
+			// branch leaves via continue, and the next lap builds its own watcher
+			// whether or not this one was cleaned up.
+			session = fModel.Session()
+			fModel.StopWatcher()
+		}
 		if !ok || (fModel.SelectedPath == "" && fModel.ResourcePath == "") {
 			if len(exitWarnings) > 0 {
 				fmt.Println("\n--- Garlic Post-Run Warnings ---")

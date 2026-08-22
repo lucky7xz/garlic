@@ -3,6 +3,7 @@ package filesystem
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -10,14 +11,21 @@ import (
 )
 
 // WatchBoards initializes an fsnotify watcher for all configured board roots and their categories.
-// It returns a channel that emits updated Boards whenever a change is detected.
-func WatchBoards(opts []domain.BoardOptions) (<-chan []domain.Board, error) {
+// It returns a channel that emits updated Boards whenever a change is detected,
+// and a stop func that tears the watcher down. Callers must stop a watcher they
+// are done with: the runner builds a fresh one every time it re-enters the TUI,
+// so leaving the old one running leaks a file descriptor and a goroutine per
+// file opened.
+func WatchBoards(opts []domain.BoardOptions) (<-chan []domain.Board, func(), error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	updateChan := make(chan []domain.Board)
+	done := make(chan struct{})
+	var stopOnce sync.Once
+	stop := func() { stopOnce.Do(func() { close(done) }) }
 
 	// Initial watch setup: Watch roots and their immediate subdirectories (categories)
 	for _, opt := range opts {
@@ -64,16 +72,27 @@ func WatchBoards(opts []domain.BoardOptions) (<-chan []domain.Board, error) {
 					for _, opt := range opts {
 						boards = append(boards, ScanBoard(opt))
 					}
-					updateChan <- boards
+					// Once the TUI has quit nothing reads updateChan again, so an
+					// unguarded send would park this goroutine forever.
+					select {
+					case updateChan <- boards:
+					case <-done:
+					}
 				})
 
 			case _, ok := <-watcher.Errors:
 				if !ok {
 					return
 				}
+
+			case <-done:
+				if timer != nil {
+					timer.Stop()
+				}
+				return
 			}
 		}
 	}()
 
-	return updateChan, nil
+	return updateChan, stop, nil
 }
