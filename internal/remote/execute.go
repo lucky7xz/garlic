@@ -28,6 +28,21 @@ func sshArgs(r domain.Remote) []string {
 	return append(args, r.Host)
 }
 
+// rsyncArgs are the flags every transfer shares.
+//
+// --no-perms is deliberate: a destination may use POSIX ACLs to give two
+// identities write access (say a host user and a container's user sharing a
+// mounted volume), and setting a mode recalculates the ACL mask, quietly
+// revoking what was granted. Garlic decides by content hash and never by
+// timestamp or mode, so there is nothing to preserve.
+func rsyncArgs(r domain.Remote) []string {
+	args := []string{"-a", "--no-perms", "--protect-args"}
+	if transport := rsyncTransport(r); transport != "" {
+		args = append(args, "-e", transport)
+	}
+	return args
+}
+
 // rsyncTransport is rsync's -e argument, or "" when plain ssh will do.
 func rsyncTransport(r domain.Remote) string {
 	transport := "ssh"
@@ -274,11 +289,7 @@ func (c *conn) rsync(rels []string, src, dest string) error {
 		return nil
 	}
 
-	args := []string{"-a", "--protect-args", "--files-from=-"}
-	if transport := rsyncTransport(c.remote); transport != "" {
-		args = append(args, "-e", transport)
-	}
-	args = append(args, src, dest)
+	args := append(rsyncArgs(c.remote), "--files-from=-", src, dest)
 
 	cmd := exec.Command("rsync", args...)
 	cmd.Stdin = strings.NewReader(strings.Join(rels, "\n") + "\n")
@@ -298,11 +309,7 @@ func (c *conn) fetchOne(rel, localDest string) error {
 		return err
 	}
 
-	args := []string{"-a", "--protect-args"}
-	if transport := rsyncTransport(c.remote); transport != "" {
-		args = append(args, "-e", transport)
-	}
-	args = append(args, c.remote.Host+":"+path.Join(c.root, rel), localDest)
+	args := append(rsyncArgs(c.remote), c.remote.Host+":"+path.Join(c.root, rel), localDest)
 
 	cmd := exec.Command("rsync", args...)
 	var errs bytes.Buffer

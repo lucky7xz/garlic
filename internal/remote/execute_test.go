@@ -133,3 +133,33 @@ func TestParentDirs(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+// The destination may rely on POSIX ACLs to give two identities write access.
+// rsync's -a implies --perms, and setting a mode recalculates the ACL mask,
+// which silently revokes what was granted. Garlic compares content hashes and
+// never times, so preserving modes buys nothing here.
+func TestRsyncArgsDoNotPreservePerms(t *testing.T) {
+	args := rsyncArgs(domain.Remote{Host: "you@host"})
+
+	if !slices.Contains(args, "--no-perms") {
+		t.Errorf("expected --no-perms, got %v", args)
+	}
+	if !slices.Contains(args, "--protect-args") {
+		t.Errorf("expected --protect-args, got %v", args)
+	}
+	if slices.Contains(args, "-e") {
+		t.Errorf("a plain remote needs no -e, got %v", args)
+	}
+}
+
+func TestRsyncArgsCarryTransport(t *testing.T) {
+	args := rsyncArgs(domain.Remote{Host: "you@host", Port: 2222})
+
+	i := slices.Index(args, "-e")
+	if i < 0 || i+1 >= len(args) {
+		t.Fatalf("expected -e with a value, got %v", args)
+	}
+	if args[i+1] != "ssh -p 2222" {
+		t.Errorf("got %q, want %q", args[i+1], "ssh -p 2222")
+	}
+}
