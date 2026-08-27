@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/lucky7xz/garlic/internal/config"
+	"github.com/lucky7xz/garlic/internal/remote"
 	"github.com/lucky7xz/garlic/internal/ui"
 )
 
@@ -107,9 +108,22 @@ func executeCmd(binary string, args []string, asyncApps []string) {
 }
 
 func Run() {
-	if len(os.Args) > 1 && os.Args[1] == "init" {
-		initDemo()
-		return
+	if len(os.Args) > 1 {
+		switch {
+		case os.Args[1] == "init":
+			initDemo()
+			return
+		case remote.IsCommand(os.Args[1]):
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				log.Fatalf("Error loading configuration: %v", err)
+			}
+			if err := remote.Run(cfg, os.Args[1:]); err != nil {
+				fmt.Fprintf(os.Stderr, "garlic: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
 	}
 
 	// Each lap rebuilds the model from scratch, so where the cursor was has to be

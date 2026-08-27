@@ -166,6 +166,76 @@ Garlic handles the "where", but leaves the "how" to your favorite terminal tools
 - `e` – edit filename 
 - `Del` – delete the selected file (confirmation required)
 
+## 🌱 Planting and harvesting
+
+Garlic can hand work to another machine and collect the results. This machine is
+always the source of truth; the remote is derived and disposable.
+
+```bash
+garlic plant   epics                 @ agent   # send a bulb
+garlic plant   scripts/drako         @ agent   # send one area
+garlic harvest epics/fitness/running @ agent   # collect one project
+garlic status                        @ agent   # ask the remote, change nothing
+garlic wipe                          @ agent   # clear it and start over
+```
+
+Every command reads *verb, address, at, machine*. The address is the board's own
+coordinates — `bulb`, `bulb/area`, or `bulb/area/project` — and a project always
+travels together with its resource folder. `@ <remote>` is always required, so
+`garlic plant epics` on its own can never reach another machine.
+
+Define the machine in `~/.config/garlic/config.toml`:
+
+```toml
+[[remote]]
+name          = "agent"
+host          = "you@1.2.3.4"
+port          = 2222                  # optional
+identity_file = "~/.ssh/agent_key"    # optional
+root          = "~/shara"             # a path on the OTHER machine
+```
+
+Needs `ssh`, `rsync` and `sha256sum` at both ends. Garlic itself does not have to
+be installed on the remote — it writes a plain tree inside `root` and nothing
+outside it, so `wipe` is a single `rm -rf`.
+
+### 🤝 Delegating to an agent
+
+Write `#AT` into a project file to mark an agent task. While any bare `#AT` is
+still outstanding, the board shows a `⏳` beside the project. The agent flips each
+one to `#AT-done` as it finishes, and the mark disappears.
+
+```markdown
+#statustag-inProgress
+
+- [ ] aggregate last week's logs #AT
+- [x] set up the runner #AT-done
+```
+
+Like `#statustag-` and `#garlic-hide`, this is state carried as file content, so
+it crosses the wire for free — there is nothing else to keep in step.
+
+### 🧠 How it decides
+
+Planting leaves a manifest on the remote: the hashes of what was handed over.
+That gives garlic three states for every file — as planted, as it is on the
+remote now, as it is here now — which is exactly what it takes to know *who
+moved a file*, rather than merely that it differs.
+
+- Collected: the agent changed it and you did not.
+- Parked: you both changed it. Your file is untouched; the remote's version is
+  set down inside the project's resource folder as `<name>.remote.md`. Parking
+  counts as handing the conflict over, so the next `plant` will send your
+  version — merge first if you want theirs.
+- Reported only: the agent deleted it. **Garlic never deletes anything of yours**
+  — `#garlic-hide` is the delete that travels, because it is content.
+- Left alone: planting skips anything the agent has touched, the exact mirror of
+  the rule above.
+
+Garlic keeps no state on this machine. The manifest lives on the remote next to
+what it describes, so `wipe` takes the memory with it — and `harvest` against a
+remote with no manifest refuses rather than guessing.
+
 ## 🎨 Theming
 
 Set your preferred theme in `~/.config/garlic/config.toml`:

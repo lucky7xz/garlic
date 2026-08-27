@@ -87,6 +87,12 @@ func LoadConfig() (domain.Config, error) {
 		config.SemiBulbs[i].Path = expandPath(config.SemiBulbs[i].Path)
 	}
 
+	// A remote's identity file is ours, so it expands here. Its root belongs to
+	// the other machine and must not: ~ there is not ~ here.
+	for i := range config.Remotes {
+		config.Remotes[i].IdentityFile = expandPath(config.Remotes[i].IdentityFile)
+	}
+
 	// Master theme override check
 	drakoConfigPath := filepath.Join(usr.HomeDir, ".config/drako/config.toml")
 	if _, err := os.Stat(drakoConfigPath); err == nil {

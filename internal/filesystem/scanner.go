@@ -52,18 +52,20 @@ func ScanBoard(opts domain.BoardOptions) domain.Board {
 			
 			if strings.HasSuffix(file.Name(), opts.Extension) {
 				filePath := filepath.Join(catPath, file.Name())
-				tag, isHidden := GetTags(filePath)
+				tags := GetTags(filePath)
+				tag := tags.Status
 				
 				if tag != "" && isAllowedStatus(tag, opts.Statuses) {
 					p := domain.Project{
-						Name:     file.Name(),
-						Path:     filePath,
-						Category: category,
-						Status:   tag,
+						Name:      file.Name(),
+						Path:      filePath,
+						Category:  category,
+						Status:    tag,
+						AgentTask: tags.AgentTask,
 					}
 					
 					targetGrid := board.Grid
-					if isHidden {
+					if tags.Hidden {
 						targetGrid = board.HiddenGrid
 					}
 					
@@ -99,29 +101,49 @@ func ScanBoard(opts domain.BoardOptions) domain.Board {
 	return board
 }
 
-func GetTags(filePath string) (string, bool) {
+// Tags is the state a project file carries in its own content. Everything the
+// board knows about a project comes from here, which is also why it survives a
+// trip to another machine: it is just bytes in the file.
+type Tags struct {
+	Status string
+	Hidden bool
+	// AgentTask is true while at least one bare #AT remains. The agent flips
+	// each one to #AT-done as it finishes, and the board mark disappears.
+	AgentTask bool
+}
+
+var (
+	reStatus = regexp.MustCompile(`#statustag-\s*(\w+)`)
+	// Matched whole so that #ATTENTION and #AT-done are not mistaken for a
+	// bare #AT. RE2 has no lookahead, so compare the match instead.
+	reAgentTask = regexp.MustCompile(`#AT[-\w]*`)
+)
+
+func GetTags(filePath string) Tags {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return "", false
+		return Tags{}
 	}
 	defer file.Close()
 
-	reStatus := regexp.MustCompile(`#statustag-\s*(\w+)`)
-	status := ""
-	hidden := false
-
+	var tags Tags
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+
 		if line == "#garlic-hide" {
-			hidden = true
-		} else if m := reStatus.FindStringSubmatch(line); m != nil && len(m) >= 2 {
-			if status == "" {
-				status = m[1]
+			tags.Hidden = true
+		}
+		if m := reStatus.FindStringSubmatch(line); len(m) >= 2 && tags.Status == "" {
+			tags.Status = m[1]
+		}
+		for _, m := range reAgentTask.FindAllString(line, -1) {
+			if m == "#AT" {
+				tags.AgentTask = true
 			}
 		}
 	}
-	return status, hidden
+	return tags
 }
 
 func isAllowedStatus(s string, allowedStatuses []string) bool {

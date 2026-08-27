@@ -61,3 +61,27 @@ statuses = ["inProgress", "onHold"]
 [[semi-bulb]]
 path = "~/shara/decks"
 statuses = ["inProgress", "onHold"]
+
+# ┌─ Remote ─────────────────────────────────────────────────────────────────┐
+# │ Another machine you hand work to. Garlic plants to it, harvests from it,
+# │ and can wipe it — the remote is disposable; this machine is the source.
+# │
+# │   garlic plant   epics                 @ agent
+# │   garlic plant   scripts/drako         @ agent
+# │   garlic harvest epics/fitness/running @ agent
+# │   garlic status                        @ agent
+# │   garlic wipe                          @ agent
+# │
+# │ Needs ssh, rsync and sha256sum on both ends. Garlic does not have to be
+# │ installed over there: it only ever writes a plain tree inside `root`.
+# │
+# │ `root` is a path on the OTHER machine, so ~ expands against ITS home.
+# │ `port` and `identity_file` are optional — they are the only two things ssh
+# │ cannot carry in the destination string.
+# └──────────────────────────────────────────────────────────────────────────┘
+# [[remote]]
+# name = "agent"
+# host = "you@1.2.3.4"
+# port = 2222
+# identity_file = "~/.ssh/agent_key"
+# root = "~/shara"

@@ -1,15 +1,17 @@
 package domain
 
 import (
+	"fmt"
 	"path/filepath"
 )
 
 // Project represents a project file.
 type Project struct {
-	Name     string
-	Path     string
-	Category string
-	Status   string
+	Name      string
+	Path      string
+	Category  string
+	Status    string
+	AgentTask bool
 }
 
 // Board represents a single workspace ("bulb").
@@ -43,6 +45,16 @@ type BoardOptions struct {
 	ShowEmptyCategories bool
 }
 
+// Remote is another machine garlic can plant to. It carries exactly what ssh
+// cannot express in the destination string, and nothing more.
+type Remote struct {
+	Name         string `toml:"name"`
+	Host         string `toml:"host"`
+	Port         int    `toml:"port"`
+	IdentityFile string `toml:"identity_file"`
+	Root         string `toml:"root"`
+}
+
 type Config struct {
 	Theme          string       `toml:"theme"`
 	FullBulbs      []BulbConfig `toml:"full-bulb"`
@@ -53,6 +65,20 @@ type Config struct {
 	AltEditor      string       `toml:"alt_editor"`
 	AltFileManager string       `toml:"alt_file_manager"`
 	AsyncApps      []string     `toml:"async_apps"`
+	Remotes        []Remote     `toml:"remote"`
+}
+
+// FindRemote resolves the name given after "@".
+func (c Config) FindRemote(name string) (Remote, error) {
+	for _, r := range c.Remotes {
+		if r.Name == name {
+			return r, nil
+		}
+	}
+	if len(c.Remotes) == 0 {
+		return Remote{}, fmt.Errorf("no remotes configured: add a [[remote]] block to your config.toml")
+	}
+	return Remote{}, fmt.Errorf("no remote named %q", name)
 }
 
 func (c Config) GetBoardOptions() []BoardOptions {

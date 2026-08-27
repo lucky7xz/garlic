@@ -44,6 +44,10 @@ func ApplyTheme(theme domain.Theme, m *Model) {
 		Foreground(lipgloss.Color(theme.Accent)).
 		Bold(true)
 
+	m.AgentHintStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(theme.Warning)).
+		Bold(true)
+
 	m.EmptyCellStyle = m.CellStyle.Copy().Foreground(lipgloss.Color(theme.Comment))
 
 	m.HelpStyle = lipgloss.NewStyle().

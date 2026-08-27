@@ -105,6 +105,7 @@ type Model struct {
 	EmptyCellStyle    lipgloss.Style
 	SelectedCellStyle lipgloss.Style
 	ResourceHintStyle lipgloss.Style
+	AgentHintStyle    lipgloss.Style
 	HelpStyle         lipgloss.Style
 	SeparatorStyle    lipgloss.Style
 }
@@ -865,12 +866,7 @@ func (m Model) View() string {
 						style = activeSelectedCellStyle
 					}
 
-					var cellContent string
-					if hasResource {
-						cellContent = truncate(name, contentWidth-1) + m.ResourceHintStyle.Render("*")
-					} else {
-						cellContent = truncate(name, contentWidth)
-					}
+					cellContent := projectCell(name, hasResource, p.AgentTask, contentWidth, m.ResourceHintStyle, m.AgentHintStyle)
 					rowCells = append(rowCells, style.Render(cellContent))
 				} else {
 					style := activeEmptyCellStyle
