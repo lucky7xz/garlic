@@ -75,10 +75,16 @@ func Classify(manifest Manifest, local, remote Census) map[string]Movement {
 				out[p] = LocalNew
 			}
 		case !hasLocal:
-			if planted {
-				out[p] = LocalGone
-			} else {
+			switch {
+			case !planted:
 				out[p] = RemoteNew
+			case r == base:
+				// You deleted it and the agent left it alone: it stays deleted.
+				out[p] = LocalGone
+			default:
+				// You deleted it, then the agent worked on it. That is new work,
+				// not the file you threw away, so it is collectable again.
+				out[p] = RemoteMoved
 			}
 		case l == r:
 			out[p] = Still

@@ -65,6 +65,15 @@ func TestClassify(t *testing.T) {
 			map[string]Movement{"a.md": Still},
 		},
 		{
+			// Deleting locally must not freeze the file: if the agent works on
+			// it afterwards, that is new work and it has to be collectable.
+			"you deleted it, then the agent worked on it",
+			Manifest{"a.md": "A"},
+			Census{},
+			Census{"a.md": "C"},
+			map[string]Movement{"a.md": RemoteMoved},
+		},
+		{
 			"the agent created it",
 			Manifest{},
 			Census{},
