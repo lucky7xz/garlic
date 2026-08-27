@@ -40,27 +40,27 @@ func TestParseCommandAccepts(t *testing.T) {
 		{
 			"glued @",
 			[]string{"plant", "scripts/drako", "@agent"},
-			Command{"plant", Address{"scripts", "drako", ""}, "agent"},
+			Command{Verb: "plant", Address: Address{Bulb: "scripts", Area: "drako"}, Remote: "agent"},
 		},
 		{
 			"project depth",
 			[]string{"harvest", "epics/fitness/running", "@", "agent"},
-			Command{"harvest", Address{"epics", "fitness", "running"}, "agent"},
+			Command{Verb: "harvest", Address: Address{Bulb: "epics", Area: "fitness", Project: "running"}, Remote: "agent"},
 		},
 		{
 			"status without address",
 			[]string{"status", "@", "agent"},
-			Command{"status", Address{}, "agent"},
+			Command{Verb: "status", Remote: "agent"},
 		},
 		{
 			"status with address",
 			[]string{"status", "epics/fitness", "@agent"},
-			Command{"status", Address{"epics", "fitness", ""}, "agent"},
+			Command{Verb: "status", Address: Address{Bulb: "epics", Area: "fitness"}, Remote: "agent"},
 		},
 		{
 			"wipe takes no address",
 			[]string{"wipe", "@", "agent"},
-			Command{"wipe", Address{}, "agent"},
+			Command{Verb: "wipe", Remote: "agent"},
 		},
 	}
 
@@ -266,5 +266,47 @@ func TestSelectSkipsParkedCopies(t *testing.T) {
 			rels = append(rels, f.Rel)
 		}
 		t.Errorf("expected the project's own 3 files, got %v", rels)
+	}
+}
+
+func TestParseCommandWipeAll(t *testing.T) {
+	bare, err := ParseCommand([]string{"wipe", "@", "agent"})
+	if err != nil {
+		t.Fatalf("ParseCommand failed: %v", err)
+	}
+	if bare.All {
+		t.Error("plain wipe should not be --all")
+	}
+
+	all, err := ParseCommand([]string{"wipe", "--all", "@", "agent"})
+	if err != nil {
+		t.Fatalf("ParseCommand failed: %v", err)
+	}
+	if !all.All {
+		t.Error("wipe --all should set All")
+	}
+	if all.Verb != "wipe" || all.Remote != "agent" {
+		t.Errorf("got %+v", all)
+	}
+}
+
+func TestParseCommandRejectsBadFlags(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"--all on plant", []string{"plant", "--all", "epics", "@", "agent"}},
+		{"--all on harvest", []string{"harvest", "--all", "epics", "@", "agent"}},
+		{"--all on status", []string{"status", "--all", "@", "agent"}},
+		{"unknown flag", []string{"wipe", "--everything", "@", "agent"}},
+		{"wipe --all still takes no address", []string{"wipe", "--all", "epics", "@", "agent"}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := ParseCommand(c.args); err == nil {
+				t.Errorf("ParseCommand(%v) succeeded, want error", c.args)
+			}
+		})
 	}
 }

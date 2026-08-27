@@ -39,13 +39,39 @@ func Run(cfg domain.Config, args []string) error {
 	case "status":
 		return harvest(cfg, c, cmd.Address, false)
 	case "wipe":
-		if err := c.wipe(); err != nil {
-			return err
-		}
-		fmt.Printf("wiped %s\n", c.Describe())
-		return nil
+		return wipe(c, cmd.All)
 	}
 	return fmt.Errorf("unknown command %q", cmd.Verb)
+}
+
+// wipe clears garlic's own planting by default. Because a root can be shared
+// with work garlic never planted, taking everything has to be asked for.
+func wipe(c *conn, all bool) error {
+	if all {
+		if err := c.wipeAll(); err != nil {
+			return err
+		}
+		fmt.Printf("wiped everything under %s\n", c.Describe())
+		return nil
+	}
+
+	manifest, planted, err := c.readManifest()
+	if err != nil {
+		return err
+	}
+	if !planted {
+		fmt.Printf("nothing planted at %s — leaving it alone\n", c.Describe())
+		return nil
+	}
+
+	rels := sortedKeys(manifest)
+	if err := c.wipePlanted(rels); err != nil {
+		return err
+	}
+
+	fmt.Printf("wiped %d planted files from %s\n", len(rels), c.Describe())
+	fmt.Printf("anything garlic did not plant is still there — `garlic wipe --all @ %s` takes the rest\n", c.remote.Name)
+	return nil
 }
 
 // plant tops the remote up: it sends what the agent has not touched, and says

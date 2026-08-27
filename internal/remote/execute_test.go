@@ -113,3 +113,23 @@ func TestLocalCensusReportsMissingFiles(t *testing.T) {
 		t.Error("localCensus accepted a missing file, want error")
 	}
 }
+
+// Pruning must run deepest-first, so an inner directory is gone before its
+// parent is tried.
+func TestParentDirs(t *testing.T) {
+	got := parentDirs([]string{
+		"epics/fitness/running.md",
+		"epics/fitness/running/logs/day1.txt",
+		"epics/fitness/running/plan.pdf",
+		"toplevel.md",
+	})
+
+	want := []string{
+		"epics/fitness/running/logs",
+		"epics/fitness/running",
+		"epics/fitness",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/lucky7xz/garlic/internal/domain"
@@ -194,9 +195,57 @@ func (c *conn) statusTags(rels []string) (map[string]string, error) {
 	return tags, nil
 }
 
-func (c *conn) wipe() error {
+// wipeAll clears the root outright, including anything garlic never planted.
+func (c *conn) wipeAll() error {
 	_, err := c.run(fmt.Sprintf("rm -rf %s", quote(c.root)), nil)
 	return err
+}
+
+// wipePlanted removes exactly what the manifest records and then the manifest
+// itself, leaving whatever else lives in the root untouched. Directories are
+// pruned with `rmdir -p`, which fails on a non-empty directory — so only the
+// ones our own deletions just emptied can go.
+func (c *conn) wipePlanted(rels []string) error {
+	if len(rels) > 0 {
+		if _, err := c.run("cd "+quote(c.root)+" && xargs -0 -r rm -f --", nulList(rels)); err != nil {
+			return err
+		}
+
+		dirs := parentDirs(rels)
+		if len(dirs) > 0 {
+			prune := "cd " + quote(c.root) + " && xargs -0 -r rmdir -p -- 2>/dev/null || true"
+			if _, err := c.run(prune, nulList(dirs)); err != nil {
+				return err
+			}
+		}
+	}
+
+	_, err := c.run("rm -f "+quote(c.manifestPath()), nil)
+	return err
+}
+
+func nulList(items []string) io.Reader {
+	return strings.NewReader(strings.Join(items, "\x00") + "\x00")
+}
+
+// parentDirs lists the directories holding the given files, deepest first so
+// that pruning works its way outward.
+func parentDirs(rels []string) []string {
+	seen := map[string]bool{}
+	for _, rel := range rels {
+		if dir := path.Dir(rel); dir != "." && dir != "/" {
+			seen[dir] = true
+		}
+	}
+
+	dirs := make([]string, 0, len(seen))
+	for dir := range seen {
+		dirs = append(dirs, dir)
+	}
+	sort.Slice(dirs, func(i, j int) bool {
+		return strings.Count(dirs[i], "/") > strings.Count(dirs[j], "/")
+	})
+	return dirs
 }
 
 // push sends files named relative to a bulb into that bulb's dir on the remote.

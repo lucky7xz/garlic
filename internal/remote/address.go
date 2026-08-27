@@ -25,6 +25,9 @@ type Command struct {
 	Verb    string
 	Address Address
 	Remote  string
+	// All widens wipe from "what garlic planted" to "everything under the
+	// root". Only wipe accepts it, and it has to be asked for by name.
+	All bool
 }
 
 // How deep an address each verb accepts. plant and harvest write, so they
@@ -54,6 +57,14 @@ func ParseCommand(args []string) (Command, error) {
 		return cmd, err
 	}
 	cmd.Remote = remote
+
+	for len(rest) > 0 && strings.HasPrefix(rest[0], "-") {
+		if rest[0] != "--all" || cmd.Verb != "wipe" {
+			return cmd, fmt.Errorf("%s takes no %s", cmd.Verb, rest[0])
+		}
+		cmd.All = true
+		rest = rest[1:]
+	}
 
 	if len(rest) > 1 {
 		return cmd, fmt.Errorf("%s takes a single address", cmd.Verb)
