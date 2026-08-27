@@ -1,0 +1,148 @@
+package remote
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"sort"
+	"testing"
+
+	"github.com/lucky7xz/garlic/internal/domain"
+)
+
+// A semi bulb's category IS the project: a .clove.md marks the folder as in
+// play, and the whole folder belongs to it.
+func semiBulb(t *testing.T) domain.BoardOptions {
+	t.Helper()
+	root := t.TempDir()
+
+	write := func(rel, content string) {
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write("scripts/garlic/revise.clove.md", "#statustag-inProgress\n")
+	write("scripts/garlic/release.clove.md", "#statustag-onHold\n")
+	write("scripts/garlic/main.go", "package main\n")
+	write("scripts/garlic/internal/ui/tui.go", "package ui\n")
+	write("scripts/garlic/.git/HEAD", "ref: refs/heads/main\n")
+	write("scripts/garlic/.git/objects/ab/cdef", "binary\n")
+	write("scripts/garlic/dist/garlic_linux/garlic", "elf\n")
+	write("scripts/neofetch/neofetch.sh", "#!/bin/sh\n") // no clove: invisible
+
+	return domain.BoardOptions{
+		Path:        filepath.Join(root, "scripts"),
+		Name:        "scripts",
+		Extension:   ".clove.md",
+		Statuses:    []string{"inProgress", "onHold"},
+		WholeFolder: true,
+		Ignore:      []string{"dist"},
+	}
+}
+
+func rels(files []File) []string {
+	var out []string
+	for _, f := range files {
+		out = append(out, f.Rel)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func TestBulbFilesTakesTheWholeFolder(t *testing.T) {
+	got, err := BulbFiles(semiBulb(t))
+	if err != nil {
+		t.Fatalf("BulbFiles failed: %v", err)
+	}
+
+	want := []string{
+		"scripts/garlic/internal/ui/tui.go",
+		"scripts/garlic/main.go",
+		"scripts/garlic/release.clove.md",
+		"scripts/garlic/revise.clove.md",
+	}
+	if !slices.Equal(rels(got), want) {
+		t.Errorf("got  %v\nwant %v", rels(got), want)
+	}
+}
+
+// Naming one clove still sends the folder: the folder belongs to every clove in it.
+func TestSelectOnSemiBulbIgnoresProjectDepth(t *testing.T) {
+	bulb := semiBulb(t)
+	opts := []domain.BoardOptions{bulb}
+
+	whole, err := Select(Address{Bulb: "scripts", Area: "garlic"}, opts)
+	if err != nil {
+		t.Fatalf("Select(area) failed: %v", err)
+	}
+	one, err := Select(Address{Bulb: "scripts", Area: "garlic", Project: "revise"}, opts)
+	if err != nil {
+		t.Fatalf("Select(project) failed: %v", err)
+	}
+
+	if !slices.Equal(rels(whole), rels(one)) {
+		t.Errorf("naming a clove should send the whole folder:\n  area   %v\n  clove  %v", rels(whole), rels(one))
+	}
+}
+
+// A full bulb keeps the old meaning: the category is an area of many projects.
+func TestFullBulbUnaffectedByWholeFolder(t *testing.T) {
+	opts := selectTestBoard(t)
+
+	files, err := Select(Address{Bulb: "epics", Area: "fitness", Project: "running"}, opts)
+	if err != nil {
+		t.Fatalf("Select failed: %v", err)
+	}
+
+	want := []string{
+		"epics/fitness/running.md",
+		"epics/fitness/running/logs/day1.txt",
+		"epics/fitness/running/plan.pdf",
+	}
+	if !slices.Equal(rels(files), want) {
+		t.Errorf("got  %v\nwant %v", rels(files), want)
+	}
+}
+
+// On a semi bulb anything under a folder that holds a clove is collectable —
+// the folder is the project, not just the markdown in it.
+func TestVisibilityWholeFolder(t *testing.T) {
+	v := visibility{
+		Bulb:        "scripts",
+		Ext:         ".clove.md",
+		Statuses:    []string{"inProgress", "onHold"},
+		WholeFolder: true,
+		Remote: Census{
+			"scripts/garlic/revise.clove.md": "A",
+			"scripts/garlic/main.go":         "B",
+			"scripts/neofetch/neofetch.sh":   "C",
+		},
+		Planted: Manifest{"scripts/garlic/revise.clove.md": "A"},
+	}
+
+	cases := []struct {
+		name string
+		rel  string
+		want bool
+	}{
+		{"source file in a folder that has a clove", "scripts/garlic/main.go", true},
+		{"nested source file", "scripts/garlic/internal/ui/tui.go", true},
+		{"a new clove in the same folder", "scripts/garlic/notes.clove.md", true},
+		{"anything in a folder with no clove", "scripts/neofetch/neofetch.sh", false},
+		{"loose file at bulb level", "scripts/stray.go", false},
+		{"another bulb", "epics/fitness/running.md", false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := v.allows(c.rel); got != c.want {
+				t.Errorf("allows(%q) = %v, want %v", c.rel, got, c.want)
+			}
+		})
+	}
+}

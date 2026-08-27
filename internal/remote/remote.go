@@ -107,9 +107,9 @@ func plant(cfg domain.Config, c *conn, addr Address) error {
 	}
 
 	moves := Classify(
-		Manifest(scope(Census(manifest), addr, bulb.Extension)),
+		Manifest(scope(Census(manifest), addr, bulb)),
 		local,
-		scope(remote, addr, bulb.Extension),
+		scope(remote, addr, bulb),
 	)
 	p := PlantPlan(moves)
 
@@ -197,9 +197,9 @@ func reckon(c *conn, bulb domain.BoardOptions, addr Address, manifest Manifest, 
 	}
 
 	ext := bulb.Extension
-	local := scope(all, addr, ext)
-	planted := Manifest(scope(Census(manifest), addr, ext))
-	there := scope(remote, addr, ext)
+	local := scope(all, addr, bulb)
+	planted := Manifest(scope(Census(manifest), addr, bulb))
+	there := scope(remote, addr, bulb)
 
 	moves := Classify(planted, local, there)
 
@@ -217,12 +217,14 @@ func reckon(c *conn, bulb domain.BoardOptions, addr Address, manifest Manifest, 
 	}
 
 	seen := visibility{
-		Bulb:     bulb.Name,
-		Ext:      ext,
-		Statuses: bulb.Statuses,
-		Tags:     tags,
-		Remote:   there,
-		Planted:  planted,
+		Bulb:        bulb.Name,
+		Ext:         ext,
+		Statuses:    bulb.Statuses,
+		Tags:        tags,
+		Remote:      there,
+		Planted:     planted,
+		Ignore:      bulb.Ignore,
+		WholeFolder: bulb.WholeFolder,
 	}
 	return HarvestPlan(moves, seen.allows), there, nil
 }
@@ -239,10 +241,10 @@ func collect(c *conn, bulb domain.BoardOptions, p Plan) error {
 	return nil
 }
 
-func scope(census Census, addr Address, ext string) Census {
+func scope(census Census, addr Address, bulb domain.BoardOptions) Census {
 	out := Census{}
 	for rel, hash := range census {
-		if inScope(rel, addr, ext) {
+		if inScope(rel, addr, bulb.Extension, bulb.WholeFolder) && !ignored(rel, bulb.Ignore) {
 			out[rel] = hash
 		}
 	}

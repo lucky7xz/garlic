@@ -53,10 +53,17 @@ statuses = ["inProgress", "onHold", "toDo"]
 
 # ┌─ Semi Bulb ──────────────────────────────────────────────────────────────┐
 # │ Scans all level 1 child directories but ONLY displays them if they contain a `.clove.md`
+# │
+# │ A semi bulb's folder IS the project: the `.clove.md` marks it as in play,
+# │ and the whole folder travels when you plant or harvest it. Use `ignore` to
+# │ keep build output and dependencies out of the transfer. `.git` is always
+# │ excluded and cannot be included -- rsync merges without deleting, so a
+# │ harvested refs/ or index would leave your repo pointing at the wrong commits.
 # └──────────────────────────────────────────────────────────────────────────┘
 [[semi-bulb]]
 path = "~/shara/scripts"
 statuses = ["inProgress", "onHold"]
+ignore = ["dist", "node_modules", "target", ".venv"]
 
 [[semi-bulb]]
 path = "~/shara/decks"

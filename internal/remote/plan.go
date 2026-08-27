@@ -263,7 +263,7 @@ func sortedKeys[V any](m map[string]V) []string {
 
 // inScope narrows a whole-root census to the address the user named. The remote
 // is censused once and filtered here, so scoping costs no extra round trip.
-func inScope(rel string, addr Address, ext string) bool {
+func inScope(rel string, addr Address, ext string, wholeFolder bool) bool {
 	if addr.Bulb == "" {
 		return true
 	}
@@ -278,10 +278,12 @@ func inScope(rel string, addr Address, ext string) bool {
 	if len(parts) < 3 || parts[1] != addr.Area {
 		return false
 	}
-	if addr.Project == "" {
+	// On a semi bulb the folder belongs to every clove in it, so naming one
+	// clove still means the whole folder.
+	if addr.Project == "" || wholeFolder {
 		return true
 	}
-	// A project is its file plus its resource folder, and nothing else.
+	// On a full bulb a project is its file plus its resource folder, nothing else.
 	return parts[2] == addr.Project+ext || (parts[2] == addr.Project && len(parts) > 3)
 }
 
@@ -295,12 +297,20 @@ type visibility struct {
 	Tags     map[string]string // project path → its status tag, read from the remote
 	Remote   Census
 	Planted  Manifest // anything in here came off the board to begin with
+	Ignore   []string
+	// WholeFolder marks a semi bulb: the folder is the project, so everything
+	// under a folder holding a clove belongs to it.
+	WholeFolder bool
 }
 
 func (v visibility) allows(rel string) bool {
 	parts := strings.Split(rel, "/")
-	if len(parts) < 3 || parts[0] != v.Bulb {
+	if len(parts) < 3 || parts[0] != v.Bulb || ignored(rel, v.Ignore) {
 		return false
+	}
+
+	if v.WholeFolder {
+		return v.folderInPlay(parts[0] + "/" + parts[1])
 	}
 
 	if len(parts) == 3 {
@@ -317,4 +327,20 @@ func (v visibility) allows(rel string) bool {
 		return false
 	}
 	return v.allows(owner)
+}
+
+// folderInPlay reports whether a semi bulb's folder holds a clove at its top
+// level, either now on the remote or back when it was planted. That marker is
+// what puts the folder in play.
+func (v visibility) folderInPlay(folder string) bool {
+	for _, known := range []map[string]string{v.Remote, v.Planted} {
+		for rel := range known {
+			if strings.HasPrefix(rel, folder+"/") &&
+				strings.Count(rel, "/") == 2 &&
+				strings.HasSuffix(rel, v.Ext) {
+				return true
+			}
+		}
+	}
+	return false
 }

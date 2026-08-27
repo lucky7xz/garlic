@@ -35,6 +35,9 @@ func (b *Board) ActiveGrid(showHidden bool) map[string]map[string][]Project {
 type BulbConfig struct {
 	Path     string   `toml:"path"`
 	Statuses []string `toml:"statuses"`
+	// Ignore names path segments that never travel to or from a remote,
+	// e.g. ["dist", "node_modules"]. .git is always excluded regardless.
+	Ignore []string `toml:"ignore"`
 }
 
 type BoardOptions struct {
@@ -43,6 +46,11 @@ type BoardOptions struct {
 	Extension           string
 	Statuses            []string
 	ShowEmptyCategories bool
+	// WholeFolder marks a semi bulb, where a category is not an area of
+	// several projects but one project directory: a .clove.md inside it puts
+	// the entire folder in play.
+	WholeFolder bool
+	Ignore      []string
 }
 
 // Remote is another machine garlic can plant to. It carries exactly what ssh
@@ -90,6 +98,7 @@ func (c Config) GetBoardOptions() []BoardOptions {
 			Extension:           ".md",
 			Statuses:            bulb.Statuses,
 			ShowEmptyCategories: true,
+			Ignore:              bulb.Ignore,
 		})
 	}
 	for _, bulb := range c.SemiBulbs {
@@ -99,6 +108,8 @@ func (c Config) GetBoardOptions() []BoardOptions {
 			Extension:           ".clove.md",
 			Statuses:            bulb.Statuses,
 			ShowEmptyCategories: false,
+			WholeFolder:         true,
+			Ignore:              bulb.Ignore,
 		})
 	}
 	return opts

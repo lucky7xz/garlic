@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/lucky7xz/garlic/internal/domain"
@@ -148,7 +149,7 @@ func Select(addr Address, opts []domain.BoardOptions) ([]File, error) {
 
 	var files []File
 	for _, f := range all {
-		if inScope(f.Rel, addr, bulb.Extension) {
+		if inScope(f.Rel, addr, bulb.Extension, bulb.WholeFolder) {
 			files = append(files, f)
 		}
 	}
@@ -161,23 +162,55 @@ func Select(addr Address, opts []domain.BoardOptions) ([]File, error) {
 	return files, nil
 }
 
-// BulbFiles is every project on a bulb together with its resource folder.
-// Unlike Select it is content to return nothing.
+// BulbFiles is everything on a bulb that travels. Unlike Select it is content
+// to return nothing.
+//
+// The two bulb kinds mean different things by "category". On a full bulb it is
+// an area holding several projects, and a project is its file plus its resource
+// folder. On a semi bulb the category is itself the project: a .clove.md marks
+// the folder as in play, and the whole folder goes with it.
 func BulbFiles(bulb domain.BoardOptions) ([]File, error) {
 	board := filesystem.ScanBoard(bulb)
+
+	if bulb.WholeFolder {
+		var files []File
+		for _, category := range trackedCategories(board) {
+			got, err := walkTree(filepath.Join(bulb.Path, category), bulb)
+			if err != nil {
+				return nil, err
+			}
+			files = append(files, got...)
+		}
+		return files, nil
+	}
 
 	var files []File
 	for _, p := range boardProjects(board) {
 		base := strings.TrimSuffix(p.Name, bulb.Extension)
 		files = append(files, File{Rel: relTo(bulb, p.Path), Local: p.Path})
 
-		resources, err := walkResources(filepath.Join(filepath.Dir(p.Path), base), bulb)
+		resources, err := walkTree(filepath.Join(filepath.Dir(p.Path), base), bulb)
 		if err != nil {
 			return nil, err
 		}
 		files = append(files, resources...)
 	}
 	return files, nil
+}
+
+// trackedCategories names the folders holding at least one tracked file, in a
+// stable order.
+func trackedCategories(board domain.Board) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range boardProjects(board) {
+		if !seen[p.Category] {
+			seen[p.Category] = true
+			out = append(out, p.Category)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func findBulb(name string, opts []domain.BoardOptions) (domain.BoardOptions, error) {
@@ -202,7 +235,9 @@ func boardProjects(board domain.Board) []domain.Project {
 	return out
 }
 
-func walkResources(dir string, bulb domain.BoardOptions) ([]File, error) {
+// walkTree collects every file under dir that is allowed to travel. Ignored
+// directories are skipped whole, so a .git never gets walked at all.
+func walkTree(dir string, bulb domain.BoardOptions) ([]File, error) {
 	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
 		return nil, nil
@@ -213,8 +248,15 @@ func walkResources(dir string, bulb domain.BoardOptions) ([]File, error) {
 		if err != nil {
 			return err
 		}
-		if !d.IsDir() && !isParked(d.Name()) {
-			files = append(files, File{Rel: relTo(bulb, p), Local: p})
+		rel := relTo(bulb, p)
+		if ignored(rel, bulb.Ignore) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !d.IsDir() {
+			files = append(files, File{Rel: rel, Local: p})
 		}
 		return nil
 	})
@@ -245,4 +287,23 @@ func (a Address) String() string {
 // working notes for you, not content, so they never travel.
 func isParked(name string) bool {
 	return strings.Contains(name, ".remote.")
+}
+
+// ignored decides what never crosses, in either direction.
+//
+// .git is not a size rule but a correctness one: rsync merges without deleting,
+// so a harvested refs/, HEAD or index would land on top of yours while your
+// objects stayed — leaving branch pointers and worktree disagreeing. Patterns
+// come from the bulb's `ignore` list and match whole path segments, never
+// substrings, so "dist" cannot swallow "distributed".
+func ignored(rel string, patterns []string) bool {
+	for _, segment := range strings.Split(rel, "/") {
+		if segment == ".git" || isParked(segment) {
+			return true
+		}
+		if slices.Contains(patterns, segment) {
+			return true
+		}
+	}
+	return false
 }

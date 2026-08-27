@@ -331,7 +331,7 @@ func TestInScope(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		if got := inScope(c.rel, c.addr, ".md"); got != c.want {
+		if got := inScope(c.rel, c.addr, ".md", false); got != c.want {
 			t.Errorf("inScope(%q, %+v) = %v, want %v", c.rel, c.addr, got, c.want)
 		}
 	}
