@@ -34,14 +34,20 @@ const (
 // focus), so the gate only has to catch sizes where nothing can be drawn.
 //
 //	minBoardWidth:  a single grid column is ColWidth+2 = 15 wide, but the
-//	                header prefix ("[n/m] Workspace: ") and footer hint
-//	                ("?: help • q: quit") are both 17, so they set the floor.
+//	                header prefix ("🧄 [n/m] Workspace: ") is 20 columns, so it
+//	                sets the floor. At exactly that width the prefix takes the
+//	                whole line and the board name truncates away, which is the
+//	                right thing to lose first.
 //	minBoardHeight: header block (3) + one status block (title 1, bordered
 //	                category header 3, separator 1, bordered project row 3,
 //	                padding 1) + footer block (2) = 14.
 const (
 	minBoardWidth  = 20
 	minBoardHeight = 14
+
+	// garlicMark heads the board. It is fixed decoration, so unlike the planting
+	// marks it can never change the header's width.
+	garlicMark = "🧄"
 )
 
 // tooSmallToRender reports whether the board can be drawn at all at this size.
@@ -859,7 +865,7 @@ func (m Model) View() string {
 		activeSelectedCellStyle = activeSelectedCellStyle.Faint(true).Bold(false)
 		activeTitleStyle = activeTitleStyle.Faint(true).Bold(false)
 	}
-	prefix := fmt.Sprintf("[%d/%d] Workspace: ", m.ActiveBoard+1, len(m.Boards))
+	prefix := fmt.Sprintf("%s [%d/%d] Workspace: ", garlicMark, m.ActiveBoard+1, len(m.Boards))
 	// The board name is arbitrary length, so it -- not the grid -- is what pushes
 	// the header past the terminal edge. Trim it to whatever the prefix leaves.
 	boardName := truncate(currentBoard.Name, m.TermWidth-lipgloss.Width(prefix)-lipgloss.Width(viewMode))
