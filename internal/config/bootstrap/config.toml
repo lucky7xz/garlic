@@ -77,7 +77,11 @@ statuses = ["inProgress", "onHold"]
 # │   garlic plant   scripts/drako         @ agent
 # │   garlic harvest epics/fitness/running @ agent
 # │   garlic status                        @ agent
-# │   garlic wipe                          @ agent
+# │   garlic wipe                          @ agent   (only what garlic planted)
+# │   garlic wipe --all                    @ agent   (everything under root)
+# │
+# │ Press `c` on the board to see what is planted where. Nothing is cached:
+# │ garlic asks the remote, and the answer lives until you quit.
 # │
 # │ Needs ssh, rsync and sha256sum on both ends. Garlic does not have to be
 # │ installed over there: it only ever writes a plain tree inside `root`.
@@ -85,6 +89,9 @@ statuses = ["inProgress", "onHold"]
 # │ `root` is a path on the OTHER machine, so ~ expands against ITS home.
 # │ `port` and `identity_file` are optional — they are the only two things ssh
 # │ cannot carry in the destination string.
+# │
+# │ KEEP THIS BLOCK LAST. A [[table]] header captures every key after it, so a
+# │ [[remote]] placed higher up swallows editor, file_manager, async_apps...
 # └──────────────────────────────────────────────────────────────────────────┘
 # [[remote]]
 # name = "agent"

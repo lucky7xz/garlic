@@ -152,6 +152,7 @@ statuses = ["inProgress", "onHold"]
 - `o` / `p` – cycle between workspaces (Bulbs)
 - `alt+1` … `alt+9` – jump straight to a workspace by number. Numbering follows the order Garlic loads bulbs — all `full-bulb`s first, then all `semi-bulb`s — which is the `[2/3]` counter in the header
 - `tab` – toggle hidden view
+- `c` – check which projects are planted on your remotes
 - `q` – quit Garlic
 
 ### 🛠️ Bring Your Own Tools
@@ -176,13 +177,32 @@ garlic plant   epics                 @ agent   # send a bulb
 garlic plant   scripts/drako         @ agent   # send one area
 garlic harvest epics/fitness/running @ agent   # collect one project
 garlic status                        @ agent   # ask the remote, change nothing
-garlic wipe                          @ agent   # clear it and start over
+garlic wipe                          @ agent   # remove only what garlic planted
+garlic wipe --all                    @ agent   # remove everything under root
 ```
 
 Every command reads *verb, address, at, machine*. The address is the board's own
-coordinates — `bulb`, `bulb/area`, or `bulb/area/project` — and a project always
-travels together with its resource folder. `@ <remote>` is always required, so
+coordinates — `bulb`, `bulb/area`, or `bulb/area/project`. `@ <remote>` is
+always required, so
 `garlic plant epics` on its own can never reach another machine.
+
+What travels depends on the bulb. On a **full bulb** a project is its file plus
+its resource folder. On a **semi bulb** the folder *is* the project, so a
+`.clove.md` puts the whole directory in play — including whatever else lives
+there. Two things never cross:
+
+- **`.git`, always.** Not a size rule but a correctness one: rsync merges without
+  deleting, so a harvested `refs/` or `index` would land on top of yours while
+  your objects stayed, leaving branch pointers and worktree disagreeing.
+- **Whatever you list in `ignore`**, matched as whole path segments, so `dist`
+  cannot swallow `distributed`.
+
+```toml
+[[semi-bulb]]
+path     = "~/shara/scripts"
+statuses = ["inProgress", "onHold"]
+ignore   = ["dist", "node_modules", "target", ".venv"]
+```
 
 Define the machine in `~/.config/garlic/config.toml`:
 
@@ -197,7 +217,11 @@ root          = "~/shara"             # a path on the OTHER machine
 
 Needs `ssh`, `rsync` and `sha256sum` at both ends. Garlic itself does not have to
 be installed on the remote — it writes a plain tree inside `root` and nothing
-outside it, so `wipe` is a single `rm -rf`.
+outside it.
+
+A plain `wipe` removes only the files the manifest records, so a `root` shared
+with the remote's own work survives; `--all` is `rm -rf root` and has to be asked
+for by name.
 
 ### 🌱 What is planted where
 
