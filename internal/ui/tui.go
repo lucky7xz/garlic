@@ -859,7 +859,6 @@ func (m Model) View() string {
 		activeSelectedCellStyle = activeSelectedCellStyle.Faint(true).Bold(false)
 		activeTitleStyle = activeTitleStyle.Faint(true).Bold(false)
 	}
-	viewMode += m.checkStamp()
 	prefix := fmt.Sprintf("[%d/%d] Workspace: ", m.ActiveBoard+1, len(m.Boards))
 	// The board name is arbitrary length, so it -- not the grid -- is what pushes
 	// the header past the terminal edge. Trim it to whatever the prefix leaves.
@@ -971,14 +970,8 @@ func (m Model) View() string {
 	} else if m.State == stateRenaming {
 		insertStyle := m.TitleStyle.Copy().Align(lipgloss.Center)
 		footerStr = insertStyle.Render(fmt.Sprintf("RENAME: %s_", m.RenameInput)) + "\n"
-	} else if where := m.selectionPlanting(); where != "" {
-		footerStr = m.PlantedHintStyle.Align(lipgloss.Center).Render(where) + "\n"
 	} else {
-		hint := "?: help • q: quit"
-		if !m.fitsHelpOverlay() {
-			hint = "q: quit"
-		}
-		footerStr = m.HelpStyle.Align(lipgloss.Center).Render(hint) + "\n"
+		footerStr = m.idleFooter() + "\n"
 	}
 
 	finalView := lipgloss.JoinVertical(lipgloss.Center, headerStr, gridStr, footerStr)

@@ -1,36 +1,40 @@
 package ui
 
 import (
-	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
-// Three facts about planting, three homes, none of them a new line in the view.
+// Everything the board says about planting lives on one line: the footer, which
+// already changes with context. The header is left alone deliberately -- the
+// view is centered as a block, so widening the title line would shift the whole
+// board sideways the moment you pressed `c`.
 //
-//	card    a bare mark             it is planted
-//	footer  "planted on agent"      which remote holds it
-//	header  "planted 14:20"         when you last asked
-//
-// Both the header suffix and the footer are existing single-line slots, so the
-// hand-counted totalHeight in View stays correct.
+//	never checked          ?: help • q: quit
+//	checked, plain card    ?: help • q: quit • 🌱 14:20
+//	checked, planted card  🌱 planted on agent • 14:20
+//	check in flight        ?: help • q: quit • 🌱 checking…
 
-// checkStamp rides the header beside [HIDDEN]. Without it a board with no marks
-// is ambiguous: it could mean nothing is planted, or that nobody has asked yet.
-func (m Model) checkStamp() string {
+const footerSep = " • "
+
+// checkedAt says when the last check happened, or that one is still out. Empty
+// means nobody has asked yet, which is a different thing from having asked and
+// found nothing.
+func (m Model) checkedAt() string {
 	switch {
 	case m.Checking:
-		return " " + plantedMark + " checking…"
+		return "checking…"
 	case m.Planted.Checked():
-		return fmt.Sprintf(" %s checked %s", plantedMark, m.Planted.When.Format("15:04"))
+		return m.Planted.When.Format("15:04")
 	}
 	return ""
 }
 
-// selectionPlanting is the footer line for whatever the cursor is on, or "" to
-// leave the slot to the ordinary help hint. The card only says that a project is
-// planted; naming the remotes needs room, and the cursor already says which
-// project you mean.
-func (m Model) selectionPlanting() string {
+// plantedWhere names the remotes holding whatever the cursor is on, or "". The
+// card only says that a project is planted; naming the hosts needs room, and
+// the cursor already establishes which project is meant.
+func (m Model) plantedWhere() string {
 	p, ok := m.getSelectedProject()
 	if !ok {
 		return ""
@@ -40,5 +44,43 @@ func (m Model) selectionPlanting() string {
 	if len(hosts) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%s planted on %s", plantedMark, strings.Join(hosts, ", "))
+	return "planted on " + strings.Join(hosts, ", ")
+}
+
+// idleFooter is the footer line when nothing more urgent is happening. It owns
+// the help hint too, because the two share the slot.
+func (m Model) idleFooter() string {
+	hint := "?: help • q: quit"
+	if !m.fitsHelpOverlay() {
+		hint = "q: quit"
+	}
+
+	// The seedling belongs to the line rather than to each fact, so a planted
+	// card reads "🌱 planted on agent • 14:20" instead of repeating the glyph.
+	var facts []string
+	where := m.plantedWhere()
+	if where != "" {
+		facts = append(facts, where)
+	}
+	if when := m.checkedAt(); when != "" {
+		facts = append(facts, when)
+	}
+	if len(facts) == 0 {
+		return m.HelpStyle.Render(hint)
+	}
+
+	group := m.PlantedHintStyle.Render(plantedMark + " " + strings.Join(facts, footerSep))
+
+	// A planted card has something specific to say and would otherwise run long,
+	// so it takes the line to itself.
+	if where != "" {
+		return group
+	}
+
+	line := m.HelpStyle.Render(hint+footerSep) + group
+	if lipgloss.Width(line) > m.TermWidth {
+		// What you pressed the key for outranks what you already know.
+		return group
+	}
+	return line
 }

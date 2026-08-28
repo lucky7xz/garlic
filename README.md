@@ -230,17 +230,20 @@ is holding, and any project sitting out there gets a `🌱`. Move the cursor ont
 one and the footer names the machine:
 
 ```
-[1/3] Workspace: epics  🌱 checked 14:20
-┌─────────────┐
-│mealprep🌱   │
-└─────────────┘
+┌─────────────┐┌─────────────┐
+│mealprep🌱   ││sleeplog     │
+└─────────────┘└─────────────┘
 
-🌱 planted on agent
+🌱 planted on agent • 14:20        ← cursor on mealprep
+?: help • q: quit • 🌱 14:20       ← cursor anywhere else
 ```
+
+Everything about planting shares the footer, so a check never moves the board
+around underneath you.
 
 Garlic does not remember any of this. It keeps no cache and no state file — it
 goes and reads the manifest, and the answer lives until you quit. An unchecked
-board is honestly blank: nothing has been asked yet, which is why the header
+board is honestly blank: nothing has been asked yet, which is why the footer
 stamps the time once you have. A check is one `cat` per remote, so it is cheap
 enough to press whenever you wonder.
 
