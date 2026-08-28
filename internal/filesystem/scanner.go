@@ -61,7 +61,6 @@ func ScanBoard(opts domain.BoardOptions) domain.Board {
 						Path:      filePath,
 						Category:  category,
 						Status:    tag,
-						AgentTask: tags.AgentTask,
 					}
 					
 					targetGrid := board.Grid
@@ -107,17 +106,9 @@ func ScanBoard(opts domain.BoardOptions) domain.Board {
 type Tags struct {
 	Status string
 	Hidden bool
-	// AgentTask is true while at least one bare #AT remains. The agent flips
-	// each one to #AT-done as it finishes, and the board mark disappears.
-	AgentTask bool
 }
 
-var (
-	reStatus = regexp.MustCompile(`#statustag-\s*(\w+)`)
-	// Matched whole so that #ATTENTION and #AT-done are not mistaken for a
-	// bare #AT. RE2 has no lookahead, so compare the match instead.
-	reAgentTask = regexp.MustCompile(`#AT[-\w]*`)
-)
+var reStatus = regexp.MustCompile(`#statustag-\s*(\w+)`)
 
 func GetTags(filePath string) Tags {
 	file, err := os.Open(filePath)
@@ -136,11 +127,6 @@ func GetTags(filePath string) Tags {
 		}
 		if m := reStatus.FindStringSubmatch(line); len(m) >= 2 && tags.Status == "" {
 			tags.Status = m[1]
-		}
-		for _, m := range reAgentTask.FindAllString(line, -1) {
-			if m == "#AT" {
-				tags.AgentTask = true
-			}
 		}
 	}
 	return tags

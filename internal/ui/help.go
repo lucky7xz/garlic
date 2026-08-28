@@ -18,6 +18,7 @@ var helpEntries = []helpEntry{
 	{"alt+1..9", "jump to workspace"},
 	{"tab", "toglge hidden"},
 	{"r", "open resources"},
+	{"c", "check remotes"},
 	{"i", "insert file"},
 	{"e", "edit filename"},
 	{"m", "move file"},

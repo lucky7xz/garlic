@@ -14,19 +14,19 @@ func TestProjectCell(t *testing.T) {
 		name        string
 		project     string
 		hasResource bool
-		agentTask   bool
+		planted     bool
 		width       int
 		want        string
 	}{
 		{"plain", "running", false, false, 20, "running"},
 		{"resource folder", "running", true, false, 20, "running" + resourceMark},
-		{"outstanding agent task", "running", false, true, 20, "running" + agentMark},
-		{"both", "running", true, true, 20, "running" + resourceMark + agentMark},
+		{"planted on a remote", "running", false, true, 20, "running" + plantedMark},
+		{"both", "running", true, true, 20, "running" + resourceMark + plantedMark},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := projectCell(c.project, c.hasResource, c.agentTask, c.width, plain, plain)
+			got := projectCell(c.project, c.hasResource, c.planted, c.width, plain, plain)
 			if got != c.want {
 				t.Errorf("got %q, want %q", got, c.want)
 			}
@@ -41,11 +41,11 @@ func TestProjectCellNeverExceedsWidth(t *testing.T) {
 
 	for _, width := range []int{4, 8, 12, 20} {
 		for _, hasResource := range []bool{false, true} {
-			for _, agentTask := range []bool{false, true} {
-				got := projectCell(long, hasResource, agentTask, width, plain, plain)
+			for _, planted := range []bool{false, true} {
+				got := projectCell(long, hasResource, planted, width, plain, plain)
 				if w := lipgloss.Width(got); w > width {
-					t.Errorf("width %d, resource=%v agent=%v: rendered %d columns (%q)",
-						width, hasResource, agentTask, w, got)
+					t.Errorf("width %d, resource=%v planted=%v: rendered %d columns (%q)",
+						width, hasResource, planted, w, got)
 				}
 			}
 		}

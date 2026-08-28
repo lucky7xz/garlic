@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucky7xz/garlic/internal/domain"
 	"github.com/lucky7xz/garlic/internal/filesystem"
+	"github.com/lucky7xz/garlic/internal/remote"
 	"golang.org/x/term"
 )
 
@@ -89,6 +90,15 @@ type Model struct {
 	UpdateChan  <-chan []domain.Board
 	stopWatcher func()
 
+	// Remotes is where a check can look; Planted is what the last one saw.
+	// Garlic keeps no record of that: it is the answer to a question you asked
+	// with `c`, it lives for the session and dies with it. It sits here rather
+	// than on domain.Project because the watcher replaces Boards wholesale,
+	// which would blink the marks out every time you saved a file.
+	Remotes  []domain.Remote
+	Planted  remote.Sighting
+	Checking bool
+
 	// Data state toggles
 	ShowHidden   bool
 	State        appState
@@ -105,7 +115,7 @@ type Model struct {
 	EmptyCellStyle    lipgloss.Style
 	SelectedCellStyle lipgloss.Style
 	ResourceHintStyle lipgloss.Style
-	AgentHintStyle    lipgloss.Style
+	PlantedHintStyle  lipgloss.Style
 	HelpStyle         lipgloss.Style
 	SeparatorStyle    lipgloss.Style
 }
@@ -122,6 +132,22 @@ func waitForUpdate(ch <-chan []domain.Board) tea.Cmd {
 			return nil
 		}
 		return RefreshMsg(boards)
+	}
+}
+
+// checkMsg carries one check home. The error rides alongside a usable Sighting:
+// one unreachable host must not discard what the others said.
+type checkMsg struct {
+	sighting remote.Sighting
+	err      error
+}
+
+// checkRemotes asks every configured remote what it is holding. It runs as a
+// tea.Cmd so that a slow or dead host cannot freeze the board.
+func checkRemotes(remotes []domain.Remote) tea.Cmd {
+	return func() tea.Msg {
+		s, err := remote.Check(remotes)
+		return checkMsg{sighting: s, err: err}
 	}
 }
 
@@ -166,6 +192,7 @@ func InitialModel(config domain.Config) Model {
 		UpdateChan:   updateChan,
 		stopWatcher:  stopWatcher,
 		AltModifier:  config.AltModifier,
+		Remotes:      config.Remotes,
 	}
 }
 
@@ -179,6 +206,14 @@ func (m Model) StopWatcher() {
 	if m.stopWatcher != nil {
 		m.stopWatcher()
 	}
+}
+
+// plantedOn names the remotes holding a project as of the last check, or nil.
+// A project is planted exactly when its own path is a key in the manifest --
+// plant always ships the project file itself, so this needs no prefix matching
+// and no special case for the two bulb kinds.
+func (m Model) plantedOn(board domain.Board, p domain.Project) []string {
+	return m.Planted.On(remote.Rel(board.Opts, p.Path))
 }
 
 func (m Model) getSelectedProject() (domain.Project, bool) {
@@ -354,6 +389,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case RefreshMsg:
 		m.Boards = msg
 		return m, waitForUpdate(m.UpdateChan)
+
+	case checkMsg:
+		m.Checking = false
+		// Only a check that reached something replaces what is on screen; a total
+		// failure leaves the previous answer alone and just says what went wrong.
+		if msg.sighting.Checked() {
+			m.Planted = msg.sighting
+		}
+		if msg.err != nil {
+			m.ErrorMsg = msg.err.Error()
+		}
+		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.TermWidth = msg.Width
@@ -614,6 +661,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 
+		case "c":
+			if m.Checking {
+				break
+			}
+			m.Checking = true
+			return m, checkRemotes(m.Remotes)
+
 		case "enter", " ", modEnter, modSpace:
 			if p, ok := m.getSelectedProject(); ok {
 				m.SelectedPath = p.Path
@@ -805,6 +859,7 @@ func (m Model) View() string {
 		activeSelectedCellStyle = activeSelectedCellStyle.Faint(true).Bold(false)
 		activeTitleStyle = activeTitleStyle.Faint(true).Bold(false)
 	}
+	viewMode += m.checkStamp()
 	prefix := fmt.Sprintf("[%d/%d] Workspace: ", m.ActiveBoard+1, len(m.Boards))
 	// The board name is arbitrary length, so it -- not the grid -- is what pushes
 	// the header past the terminal edge. Trim it to whatever the prefix leaves.
@@ -866,7 +921,8 @@ func (m Model) View() string {
 						style = activeSelectedCellStyle
 					}
 
-					cellContent := projectCell(name, hasResource, p.AgentTask, contentWidth, m.ResourceHintStyle, m.AgentHintStyle)
+					planted := len(m.plantedOn(currentBoard, p)) > 0
+					cellContent := projectCell(name, hasResource, planted, contentWidth, m.ResourceHintStyle, m.PlantedHintStyle)
 					rowCells = append(rowCells, style.Render(cellContent))
 				} else {
 					style := activeEmptyCellStyle
@@ -915,6 +971,8 @@ func (m Model) View() string {
 	} else if m.State == stateRenaming {
 		insertStyle := m.TitleStyle.Copy().Align(lipgloss.Center)
 		footerStr = insertStyle.Render(fmt.Sprintf("RENAME: %s_", m.RenameInput)) + "\n"
+	} else if where := m.selectionPlanting(); where != "" {
+		footerStr = m.PlantedHintStyle.Align(lipgloss.Center).Render(where) + "\n"
 	} else {
 		hint := "?: help • q: quit"
 		if !m.fitsHelpOverlay() {

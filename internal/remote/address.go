@@ -187,7 +187,7 @@ func BulbFiles(bulb domain.BoardOptions) ([]File, error) {
 	var files []File
 	for _, p := range boardProjects(board) {
 		base := strings.TrimSuffix(p.Name, bulb.Extension)
-		files = append(files, File{Rel: relTo(bulb, p.Path), Local: p.Path})
+		files = append(files, File{Rel: Rel(bulb, p.Path), Local: p.Path})
 
 		resources, err := walkTree(filepath.Join(filepath.Dir(p.Path), base), bulb)
 		if err != nil {
@@ -248,7 +248,7 @@ func walkTree(dir string, bulb domain.BoardOptions) ([]File, error) {
 		if err != nil {
 			return err
 		}
-		rel := relTo(bulb, p)
+		rel := Rel(bulb, p)
 		if ignored(rel, bulb.Ignore) {
 			if d.IsDir() {
 				return fs.SkipDir
@@ -263,8 +263,8 @@ func walkTree(dir string, bulb domain.BoardOptions) ([]File, error) {
 	return files, err
 }
 
-// relTo names a local path the way the remote will: <bulb>/<area>/...
-func relTo(bulb domain.BoardOptions, local string) string {
+// Rel names a local path the way the remote will: <bulb>/<area>/...
+func Rel(bulb domain.BoardOptions, local string) string {
 	rel, err := filepath.Rel(bulb.Path, local)
 	if err != nil {
 		return ""

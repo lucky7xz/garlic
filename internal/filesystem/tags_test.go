@@ -23,34 +23,11 @@ func TestGetTags(t *testing.T) {
 			Tags{Status: "toDo", Hidden: true},
 		},
 		{
-			"an outstanding agent task",
+			// #AT is a convention for talking to an agent. Garlic ships it across
+			// the wire like any other content and has no opinion about it.
+			"agent tasks are not garlic's business",
 			"#statustag-toDo\n- [ ] aggregate the logs #AT\n",
-			Tags{Status: "toDo", AgentTask: true},
-		},
-		{
-			"the agent flipped it",
-			"#statustag-toDo\n- [x] aggregate the logs #AT-done\n",
 			Tags{Status: "toDo"},
-		},
-		{
-			"one done, one still outstanding",
-			"#statustag-toDo\n- [x] first #AT-done\n- [ ] second #AT\n",
-			Tags{Status: "toDo", AgentTask: true},
-		},
-		{
-			"every task flipped",
-			"#statustag-toDo\n- [x] first #AT-done\n- [x] second #AT-done\n",
-			Tags{Status: "toDo"},
-		},
-		{
-			"#AT must not match a longer word",
-			"#statustag-toDo\n#ATTENTION please\n",
-			Tags{Status: "toDo"},
-		},
-		{
-			"#AT at end of a sentence",
-			"#statustag-toDo\nplease do this #AT.\n",
-			Tags{Status: "toDo", AgentTask: true},
 		},
 		{
 			"nothing at all",

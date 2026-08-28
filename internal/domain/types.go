@@ -7,11 +7,10 @@ import (
 
 // Project represents a project file.
 type Project struct {
-	Name      string
-	Path      string
-	Category  string
-	Status    string
-	AgentTask bool
+	Name     string
+	Path     string
+	Category string
+	Status   string
 }
 
 // Board represents a single workspace ("bulb").

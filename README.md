@@ -199,11 +199,28 @@ Needs `ssh`, `rsync` and `sha256sum` at both ends. Garlic itself does not have t
 be installed on the remote — it writes a plain tree inside `root` and nothing
 outside it, so `wipe` is a single `rm -rf`.
 
-### 🤝 Delegating to an agent
+### 🌱 What is planted where
 
-Write `#AT` into a project file to mark an agent task. While any bare `#AT` is
-still outstanding, the board shows a `⏳` beside the project. The agent flips each
-one to `#AT-done` as it finishes, and the mark disappears.
+Press `c` on the board to **check**. Garlic asks every configured remote what it
+is holding, and any project sitting out there gets a `🌱`. Move the cursor onto
+one and the footer names the machine:
+
+```
+[1/3] Workspace: epics  🌱 checked 14:20
+┌─────────────┐
+│mealprep🌱   │
+└─────────────┘
+
+🌱 planted on agent
+```
+
+Garlic does not remember any of this. It keeps no cache and no state file — it
+goes and reads the manifest, and the answer lives until you quit. An unchecked
+board is honestly blank: nothing has been asked yet, which is why the header
+stamps the time once you have. A check is one `cat` per remote, so it is cheap
+enough to press whenever you wonder.
+
+To delegate, write `#AT` into a project file to mark a task for the agent:
 
 ```markdown
 #statustag-inProgress
@@ -212,8 +229,9 @@ one to `#AT-done` as it finishes, and the mark disappears.
 - [x] set up the runner #AT-done
 ```
 
-Like `#statustag-` and `#garlic-hide`, this is state carried as file content, so
-it crosses the wire for free — there is nothing else to keep in step.
+That is a convention between you and the agent — garlic does not read it. Like
+`#statustag-` and `#garlic-hide`, it is state carried as file content, so it
+crosses the wire for free; unlike them, nothing on the board depends on it.
 
 ### 🧠 How it decides
 
