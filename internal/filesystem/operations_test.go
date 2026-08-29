@@ -40,22 +40,25 @@ func TestRenameProject(t *testing.T) {
 		}
 	})
 
-	t.Run("Rename file but folder collision", func(t *testing.T) {
+	// A rename can half-succeed: the file moves, the resource folder cannot. The
+	// folder must be left alone, and garlic has to say so -- reporting success
+	// here would leave the project silently pointing at nothing.
+	t.Run("file renames, folder cannot, and it says so", func(t *testing.T) {
 		oldPath := filepath.Join(tmpDir, "coll.md")
 		_ = os.WriteFile(oldPath, []byte(""), 0644)
 		_ = os.Mkdir(filepath.Join(tmpDir, "coll"), 0755)
-		_ = os.Mkdir(filepath.Join(tmpDir, "target_dir"), 0755) // Collision for folder but not file
+		_ = os.Mkdir(filepath.Join(tmpDir, "target_dir"), 0755) // collides with the folder, not the file
 
-		if err := RenameProject(oldPath, "target_dir"); err != nil {
-			t.Fatalf("RenameProject failed: %v", err)
+		err := RenameProject(oldPath, "target_dir")
+		if err == nil {
+			t.Error("resources stayed behind and nothing was reported")
 		}
 
 		if _, err := os.Stat(filepath.Join(tmpDir, "target_dir.md")); err != nil {
-			t.Error("new file does not exist")
+			t.Error("the file should still have been renamed")
 		}
-		// Folder should NOT have been renamed because of collision
 		if _, err := os.Stat(filepath.Join(tmpDir, "coll")); err != nil {
-			t.Error("original folder should still exist")
+			t.Error("the original folder should have been left alone")
 		}
 	})
 }

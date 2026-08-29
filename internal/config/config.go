@@ -3,9 +3,7 @@ package config
 import (
 	"embed"
 	"fmt"
-	"log"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
 
@@ -68,14 +66,18 @@ func LoadConfig() (domain.Config, error) {
 		config.AltModifier = "alt"
 	}
 
-	usr, err := user.Current()
+	// The same home EnsureUserFile used. os.UserHomeDir reads $HOME, which is
+	// what a shell means by ~; user.Current reads the passwd database, and the
+	// two disagree under sudo and inside containers -- which would mean reading
+	// the config from one home and expanding its paths against another.
+	home, err := os.UserHomeDir()
 	if err != nil {
-		log.Fatalf("could not get current user: %v", err)
+		return domain.Config{}, fmt.Errorf("failed to get user home directory: %w", err)
 	}
 
 	expandPath := func(p string) string {
 		if strings.HasPrefix(p, "~/") {
-			return filepath.Join(usr.HomeDir, p[2:])
+			return filepath.Join(home, p[2:])
 		}
 		return p
 	}
@@ -94,7 +96,7 @@ func LoadConfig() (domain.Config, error) {
 	}
 
 	// Master theme override check
-	drakoConfigPath := filepath.Join(usr.HomeDir, ".config/drako/config.toml")
+	drakoConfigPath := filepath.Join(home, ".config/drako/config.toml")
 	if _, err := os.Stat(drakoConfigPath); err == nil {
 		var drakoConfig struct {
 			Theme string `toml:"theme"`

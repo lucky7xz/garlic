@@ -141,10 +141,13 @@ func isAllowedStatus(s string, allowedStatuses []string) bool {
 	return false
 }
 
-func ToggleHiddenMarker(filepath string) {
+// ToggleHiddenMarker adds or removes #garlic-hide. It reports what stopped it:
+// a file garlic cannot write is a key press that appears to do nothing, and the
+// board has no other way to say why.
+func ToggleHiddenMarker(filepath string) error {
 	content, err := os.ReadFile(filepath)
 	if err != nil {
-		return
+		return err
 	}
 	lines := strings.Split(string(content), "\n")
 	found := false
@@ -160,5 +163,5 @@ func ToggleHiddenMarker(filepath string) {
 		newLines = append([]string{"#garlic-hide"}, newLines...)
 	}
 
-	os.WriteFile(filepath, []byte(strings.Join(newLines, "\n")), 0644)
+	return replaceFile(filepath, []byte(strings.Join(newLines, "\n")))
 }

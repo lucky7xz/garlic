@@ -42,7 +42,7 @@ func UpdateProjectStatus(path, newStatus string) error {
 		lines = append([]string{fmt.Sprintf("#statustag-%s", newStatus), ""}, lines...)
 	}
 
-	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644)
+	return replaceFile(path, []byte(strings.Join(lines, "\n")))
 }
 
 // CreateProject safely creates a new project file if it doesn't already exist
@@ -97,13 +97,18 @@ func RenameProject(oldPath, newNameWithoutExt string) error {
 		return err
 	}
 
-	// Optionally rename resource folder
-	if info, err := os.Stat(oldResPath); err == nil && info.IsDir() {
-		// Only rename if the new folder name isn't already taken
-		if _, err := os.Stat(newResPath); os.IsNotExist(err) {
-			_ = os.Rename(oldResPath, newResPath)
-		}
+	// The file is renamed by now, so a resource folder left behind is reported
+	// rather than returned as outright failure: the caller has to redraw either
+	// way, and silence would leave the project pointing at nothing.
+	info, err := os.Stat(oldResPath)
+	if err != nil || !info.IsDir() {
+		return nil
 	}
-
+	if _, err := os.Stat(newResPath); err == nil {
+		return fmt.Errorf("renamed the file, but %s already exists so its resources stayed behind", newNameWithoutExt)
+	}
+	if err := os.Rename(oldResPath, newResPath); err != nil {
+		return fmt.Errorf("renamed the file, but its resource folder stayed behind: %w", err)
+	}
 	return nil
 }

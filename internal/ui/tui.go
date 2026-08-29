@@ -466,8 +466,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.String() == "y" {
 				if _, err := os.Stat(m.ActionTarget.Path); os.IsNotExist(err) {
 					m.ErrorMsg = "Project file no longer exists"
+				} else if err := filesystem.ToggleHiddenMarker(m.ActionTarget.Path); err != nil {
+					m.ErrorMsg = err.Error()
 				} else {
-					filesystem.ToggleHiddenMarker(m.ActionTarget.Path)
 					m.Boards[m.ActiveBoard] = filesystem.ScanBoard(currentBoard.Opts)
 				}
 			}
@@ -567,9 +568,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				newName := strings.TrimSpace(m.RenameInput)
 				if len(newName) > 0 {
-					if err := filesystem.RenameProject(m.ActionTarget.Path, newName); err == nil {
-						m.Boards[m.ActiveBoard] = filesystem.ScanBoard(currentBoard.Opts)
-					} else {
+					// Redraw either way: a rename can half-succeed, moving the
+					// file while its resource folder stays put, and the board
+					// has to show what actually happened.
+					err := filesystem.RenameProject(m.ActionTarget.Path, newName)
+					m.Boards[m.ActiveBoard] = filesystem.ScanBoard(currentBoard.Opts)
+					if err != nil {
 						m.ErrorMsg = err.Error()
 					}
 				}

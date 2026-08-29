@@ -235,7 +235,11 @@ func Run() {
 }
 
 func initDemo() {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "garlic: %v\n", err)
+		return
+	}
 	base := filepath.Join(home, "shara")
 
 	if _, err := os.Stat(base); err == nil {
@@ -254,12 +258,21 @@ func initDemo() {
 
 	for path, content := range files {
 		fullPath := filepath.Join(base, path)
-		os.MkdirAll(filepath.Dir(fullPath), 0755)
-		os.WriteFile(fullPath, []byte(content), 0644)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "garlic: %v\n", err)
+			return
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "garlic: %v\n", err)
+			return
+		}
 	}
 
 	// Create an empty resource directory for the demo
-	os.MkdirAll(filepath.Join(base, "epics/fitness/running"), 0755)
+	if err := os.MkdirAll(filepath.Join(base, "epics/fitness/running"), 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "garlic: %v\n", err)
+		return
+	}
 
 	fmt.Printf("Demo instantiated at %s\n", base)
 }
