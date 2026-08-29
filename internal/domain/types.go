@@ -117,13 +117,9 @@ func (c Config) GetBoardOptions() []BoardOptions {
 type Theme struct {
 	Primary    string `toml:"Primary"`
 	Secondary  string `toml:"Secondary"`
-	Background string `toml:"Background"`
 	Foreground string `toml:"Foreground"`
 	Comment    string `toml:"Comment"`
-	Success    string `toml:"Success"`
 	Warning    string `toml:"Warning"`
-	Error      string `toml:"Error"`
-	Info       string `toml:"Info"`
 	Accent     string `toml:"Accent"`
 }
 
