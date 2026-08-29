@@ -125,3 +125,32 @@ func TestCheckWithoutRemotes(t *testing.T) {
 		t.Error("a refused check must not stamp the board as checked")
 	}
 }
+
+// Harvest works at area granularity, so the board marks areas too. "bio" must
+// not match "bioz": comparing prefixes without the separator marks the wrong
+// column and, on the harvest side, collects a tree nobody sent.
+func TestSightingUnder(t *testing.T) {
+	s := Fold(noon, []string{"agent"}, map[string]Manifest{
+		"agent": {"epics/bioz/mealprep.md": "A"},
+	})
+
+	cases := []struct {
+		prefix string
+		want   bool
+	}{
+		{"epics/bioz", true},
+		{"epics/bio", false},
+		{"epics/biozz", false},
+		{"scripts/garlic", false},
+	}
+
+	for _, c := range cases {
+		if got := s.Under(c.prefix); got != c.want {
+			t.Errorf("Under(%q) = %v, want %v", c.prefix, got, c.want)
+		}
+	}
+
+	if (Sighting{}).Under("epics/bioz") {
+		t.Error("nothing is planted before a check has run")
+	}
+}

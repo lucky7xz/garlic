@@ -134,46 +134,55 @@ func TestIdleFooterDropsHintOnlyWhenItMustNarrow(t *testing.T) {
 }
 
 // The view is joined with JoinVertical(Center), so anything a check adds to the
-// header shifts the workspace title sideways -- the board visibly jumps for a
-// fact that is not about the board. Planting lives in the footer for exactly
-// that reason: a check must change the footer line and nothing else at all.
-func TestCheckTouchesOnlyTheFooter(t *testing.T) {
-	b := board([]string{"toDo"}, []string{"bioz", "work", "learning"}, 2)
-	b.Opts = plantedBoard().Opts
+// workspace title shifts the whole board sideways -- it visibly jumps for a fact
+// that is not about the board. That title is why planting lives in the footer,
+// and it must come out byte-identical however much else a check marks.
+//
+// Measured on a board of ordinary width, where the grid is the widest block and
+// therefore fixes the centering. On a single-column board the footer can exceed
+// the grid, and then lipgloss re-centers everything -- but that is how every
+// variable footer here already behaves, the delete prompt most of all.
+func TestCheckNeverMovesTheTitle(t *testing.T) {
+	wide := plantedBoard()
+	wide.CategoryOrder = []string{"bioz", "work", "learning"}
+	for _, cat := range wide.CategoryOrder[1:] {
+		wide.Grid["toDo"][cat] = nil
+	}
 
-	before := modelAt(b, 100, 40)
+	before := modelAt(wide, 100, 40)
 
 	checked := before
 	checked.Planted = remote.Sighting{When: checkedAt, Hosts: []string{"agent"},
-		Where: map[string][]string{"epics/toDo/bioz/0.md": {"agent"}}}
+		Where: map[string][]string{"epics/bioz/mealprep.md": {"agent"}}}
 
 	checking := before
 	checking.Checking = true
 
+	titleOf := func(m Model) string {
+		for _, line := range strings.Split(m.View(), "\n") {
+			if strings.Contains(line, "Workspace:") {
+				return line
+			}
+		}
+		t.Fatal("no workspace title in the rendered view")
+		return ""
+	}
+
+	want := titleOf(before)
 	for _, c := range []struct {
 		name string
 		m    Model
 	}{{"after a check", checked}, {"while checking", checking}} {
 		t.Run(c.name, func(t *testing.T) {
-			was := strings.Split(before.View(), "\n")
-			now := strings.Split(c.m.View(), "\n")
-			if len(was) != len(now) {
-				t.Fatalf("line count changed: %d -> %d", len(was), len(now))
-			}
-
-			var moved []int
-			for i := range was {
-				if was[i] != now[i] {
-					moved = append(moved, i)
-				}
-			}
-			if len(moved) != 1 {
-				t.Fatalf("changed %d lines, want exactly the footer: %v", len(moved), moved)
-			}
-			if !strings.Contains(now[moved[0]], plantedMark) {
-				t.Errorf("the one changed line is not the footer: %q", now[moved[0]])
+			if got := titleOf(c.m); got != want {
+				t.Errorf("title moved\n  before %q\n   after %q", want, got)
 			}
 		})
+	}
+
+	// And a mark really did land, or the assertion above proves nothing.
+	if !strings.Contains(checked.View(), "mealprep"+plantedMark) {
+		t.Error("the checked board carries no mark at all, so this test is vacuous")
 	}
 }
 
@@ -251,5 +260,70 @@ func TestCheckIsNotReentrant(t *testing.T) {
 	}
 	if !next.(Model).Checking {
 		t.Error("the in-flight flag was lost")
+	}
+}
+
+// The mark shows the granularity you planted at. Sending one project marks that
+// project; sending the whole area marks the column instead. Marking the column
+// whenever anything under it went would erase the distinction the mark is for.
+func TestAreaPlanted(t *testing.T) {
+	both := map[string][]string{
+		"epics/bioz/mealprep.md": {"agent"},
+		"epics/bioz/sleeplog.md": {"agent"},
+	}
+	one := map[string][]string{"epics/bioz/mealprep.md": {"agent"}}
+
+	cases := []struct {
+		name     string
+		where    map[string][]string
+		category string
+		want     bool
+	}{
+		{"the whole area went", both, "bioz", true},
+		{"only one project went", one, "bioz", false},
+		{"an area that never went", both, "bio", false},
+		{"an area with no projects at all", both, "empty", false},
+		{"before any check", nil, "bioz", false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := plantedModel(c.where)
+			if got := m.areaPlanted(m.Boards[m.ActiveBoard], c.category); got != c.want {
+				t.Errorf("areaPlanted(%q) = %v, want %v", c.category, got, c.want)
+			}
+		})
+	}
+}
+
+// One mark per fact, never both: a project inside a fully-planted area does not
+// repeat what its column already says.
+func TestMarksDoNotDouble(t *testing.T) {
+	whole := plantedModel(map[string][]string{
+		"epics/bioz/mealprep.md": {"agent"},
+		"epics/bioz/sleeplog.md": {"agent"},
+	}).View()
+
+	if !strings.Contains(whole, "bioz"+plantedMark) {
+		t.Errorf("a fully planted area carries no header mark:\n%s", whole)
+	}
+	if strings.Contains(whole, "mealprep"+plantedMark) {
+		t.Errorf("project repeats the mark its area already carries:\n%s", whole)
+	}
+
+	part := plantedModel(map[string][]string{"epics/bioz/mealprep.md": {"agent"}}).View()
+
+	if strings.Contains(part, "bioz"+plantedMark) {
+		t.Errorf("a partly planted area must not be marked:\n%s", part)
+	}
+	if !strings.Contains(part, "mealprep"+plantedMark) {
+		t.Errorf("the project that went carries no mark:\n%s", part)
+	}
+	if strings.Contains(part, "sleeplog"+plantedMark) {
+		t.Errorf("a project that never went is marked:\n%s", part)
+	}
+
+	if strings.Contains(plantedModel(nil).View(), plantedMark) {
+		t.Error("something is marked before a check has run")
 	}
 }

@@ -230,16 +230,18 @@ is holding, and any project sitting out there gets a `🌱`. Move the cursor ont
 one and the footer names the machine:
 
 ```
-┌─────────────┐┌─────────────┐
-│mealprep🌱   ││sleeplog     │
-└─────────────┘└─────────────┘
+│bioz         ││decks🌱      │   ← sent one project / sent the whole area
+│mealprep🌱   ││revise       │
+│sleeplog     ││release      │
 
 🌱 planted on agent • 14:20        ← cursor on mealprep
 ?: help • q: quit • 🌱 14:20       ← cursor anywhere else
 ```
 
-Everything about planting shares the footer, so a check never moves the board
-around underneath you.
+The mark shows what you sent, at the size you sent it: plant one project and the
+project is marked, plant the area and the column is marked instead. Everything
+about planting shares the footer, so a check never moves the board underneath
+you.
 
 Garlic does not remember any of this. It keeps no cache and no state file — it
 goes and reads the manifest, and the answer lives until you quit. An unchecked
@@ -276,6 +278,9 @@ moved a file*, rather than merely that it differs.
   — `#garlic-hide` is the delete that travels, because it is content.
 - Left alone: planting skips anything the agent has touched, the exact mirror of
   the rule above.
+- Left on the remote: anything in an area you never planted into. Harvest
+  collects only what the manifest covers, so a remote's own folders stay its own
+  — but inside an area you did plant, whatever the agent adds comes home.
 
 Garlic keeps no state on this machine. The manifest lives on the remote next to
 what it describes, so `wipe` takes the memory with it — and `harvest` against a

@@ -337,22 +337,14 @@ func TestInScope(t *testing.T) {
 	}
 }
 
+// Nothing comes home that was not planted for. The unit is the area: sending a
+// project into one puts the whole area in play, so the agent can add work where
+// you sent it -- but an area you never planted into stays where it is, however
+// much it looks like a board.
 func TestVisibilityAllows(t *testing.T) {
 	v := visibility{
-		Bulb:     "epics",
-		Ext:      ".md",
-		Statuses: []string{"inProgress", "toDo"},
-		Tags: map[string]string{
-			"epics/fitness/swimming.md": "toDo",
-			"epics/fitness/draft.md":    "somethingElse",
-			"epics/fitness/untagged.md": "",
-		},
-		Remote: Census{
-			"epics/fitness/swimming.md": "E",
-			"epics/fitness/draft.md":    "F",
-			"epics/fitness/running.md":  "A",
-		},
-		// running.md was planted, so it came off the board and needs no tag lookup.
+		Bulb:    "epics",
+		Ignore:  []string{"dist"},
 		Planted: Manifest{"epics/fitness/running.md": "A"},
 	}
 
@@ -361,14 +353,21 @@ func TestVisibilityAllows(t *testing.T) {
 		rel  string
 		want bool
 	}{
-		{"new project with a configured status", "epics/fitness/swimming.md", true},
-		{"new project with an unconfigured status", "epics/fitness/draft.md", false},
-		{"new project with no status at all", "epics/fitness/untagged.md", false},
-		{"wrong extension at project level", "epics/fitness/notes.txt", false},
-		{"resource of a project that exists", "epics/fitness/running/day1.txt", true},
-		{"nested resource of a project that exists", "epics/fitness/running/logs/day1.txt", true},
-		{"resource of a project that does not exist", "epics/fitness/ghost/day1.txt", false},
-		{"resource of a project that is not board-visible", "epics/fitness/draft/day1.txt", false},
+		{"the project that was planted", "epics/fitness/running.md", true},
+		{"its resource folder", "epics/fitness/running/day1.txt", true},
+		{"nested inside its resource folder", "epics/fitness/running/logs/day1.txt", true},
+
+		// The area was sent, so new work in it belongs -- whatever it looks like.
+		{"a project the agent created in a planted area", "epics/fitness/swimming.md", true},
+		{"that project's own resources", "epics/fitness/swimming/notes.txt", true},
+		{"an untagged file in a planted area", "epics/fitness/scratch.md", true},
+		{"a non-markdown file in a planted area", "epics/fitness/notes.txt", true},
+
+		// The reported bug: bio was never planted, bioz was.
+		{"an area that was never planted", "epics/bio/cardio.md", false},
+		{"under an area that was never planted", "epics/bio/cardio/dopamine.md", false},
+
+		{"ignored, even inside a planted area", "epics/fitness/dist/bundle.js", false},
 		{"loose file at bulb level", "epics/stray.md", false},
 		{"file from another bulb", "scripts/drako/x.md", false},
 	}
@@ -379,5 +378,18 @@ func TestVisibilityAllows(t *testing.T) {
 				t.Errorf("allows(%q) = %v, want %v", c.rel, got, c.want)
 			}
 		})
+	}
+}
+
+// "bio" must not match "bioz". This is the reported bug in miniature: comparing
+// prefixes without the separator marks and harvests the wrong tree.
+func TestVisibilityAreaIsAWholeSegment(t *testing.T) {
+	v := visibility{Bulb: "epics", Planted: Manifest{"epics/bioz/mealprep.md": "A"}}
+
+	if !v.allows("epics/bioz/cardio.md") {
+		t.Error("bioz was planted, so its area is in play")
+	}
+	if v.allows("epics/bio/cardio.md") {
+		t.Error("bio is a different area from bioz and was never planted")
 	}
 }

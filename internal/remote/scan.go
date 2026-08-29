@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/lucky7xz/garlic/internal/domain"
@@ -29,6 +30,22 @@ func (s Sighting) Checked() bool { return len(s.Hosts) > 0 }
 
 // On names the remotes holding a path, or nil for one that is not planted.
 func (s Sighting) On(rel string) []string { return s.Where[rel] }
+
+// Under reports whether anything is planted inside a category. Harvest decides
+// at that granularity -- planting into an area puts the whole area in play --
+// so this is the same question the collect rule asks, and the reason the board
+// marks columns as well as cards.
+//
+// The separator is part of the comparison: without it "epics/bio" would match
+// "epics/bioz/mealprep.md" and mark the wrong column.
+func (s Sighting) Under(category string) bool {
+	for rel := range s.Where {
+		if strings.HasPrefix(rel, category+"/") {
+			return true
+		}
+	}
+	return false
+}
 
 // Fold turns each remote's manifest into the answer the board wants: for a
 // given path, who has it. Hashes are dropped on the way through -- a check asks

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/lucky7xz/garlic/internal/domain"
 )
 
 // Everything the board says about planting lives on one line: the footer, which
@@ -45,6 +46,27 @@ func (m Model) plantedWhere() string {
 		return ""
 	}
 	return "planted on " + strings.Join(hosts, ", ")
+}
+
+// areaPlanted reports whether a whole column went: every project in it is on a
+// remote. The mark shows the granularity you planted at -- send one project and
+// that project is marked, send the area and the column is marked instead. A
+// column marked whenever anything under it went would erase the distinction.
+//
+// An empty category has not been planted; it has nothing to plant.
+func (m Model) areaPlanted(board domain.Board, category string) bool {
+	grid := board.ActiveGrid(m.ShowHidden)
+
+	found := false
+	for _, status := range board.Statuses {
+		for _, p := range grid[status][category] {
+			if len(m.plantedOn(board, p)) == 0 {
+				return false
+			}
+			found = true
+		}
+	}
+	return found
 }
 
 // idleFooter is the footer line when nothing more urgent is happening. It owns

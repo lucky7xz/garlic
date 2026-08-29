@@ -183,33 +183,6 @@ func (c *conn) writeManifest(m Manifest) error {
 
 func (c *conn) manifestPath() string { return path.Join(c.root, ManifestName) }
 
-// statusTags reads the status tag of files that appeared on the remote, which
-// is the one thing a hash cannot tell us. Paths go over stdin so that a long
-// list cannot overflow the command line.
-func (c *conn) statusTags(rels []string) (map[string]string, error) {
-	tags := map[string]string{}
-	if len(rels) == 0 {
-		return tags, nil
-	}
-
-	script := fmt.Sprintf(
-		"cd %s && xargs -0 -r grep -m1 -H -oE '#statustag-[A-Za-z0-9_]+' -- 2>/dev/null || true",
-		quote(c.root))
-
-	out, err := c.run(script, strings.NewReader(strings.Join(rels, "\x00")+"\x00"))
-	if err != nil {
-		return nil, err
-	}
-
-	const marker = ":#statustag-"
-	for line := range strings.SplitSeq(string(out), "\n") {
-		if i := strings.Index(line, marker); i > 0 {
-			tags[strings.TrimPrefix(line[:i], "./")] = line[i+len(marker):]
-		}
-	}
-	return tags, nil
-}
-
 // wipeAll clears the root outright, including anything garlic never planted.
 func (c *conn) wipeAll() error {
 	_, err := c.run(fmt.Sprintf("rm -rf %s", quote(c.root)), nil)

@@ -871,6 +871,13 @@ func (m Model) View() string {
 	boardName := truncate(currentBoard.Name, m.TermWidth-lipgloss.Width(prefix)-lipgloss.Width(viewMode))
 	headerStr := activeTitleStyle.Render(prefix) + boardName + activeTitleStyle.Render(viewMode) + "\n" + m.SeparatorStyle.Faint(true).Render(strings.Repeat("─", sepWidth)) + "\n"
 
+	// One mark per fact: a fully planted area is marked on its column, and its
+	// projects then say nothing, since the column already said it.
+	areaMark := make(map[string]bool, len(visibleCategories))
+	for _, category := range visibleCategories {
+		areaMark[category] = m.areaPlanted(currentBoard, category)
+	}
+
 	var gridRows []string
 	for statusIdx, status := range currentBoard.Statuses {
 		// Vertical camera: Only show active status area if board is too tall
@@ -888,7 +895,9 @@ func (m Model) View() string {
 
 		var headerCells []string
 		for _, category := range visibleCategories {
-			headerCells = append(headerCells, activeHeaderStyle.Render(truncate(category, contentWidth)))
+			head := projectCell(category, false, areaMark[category],
+				contentWidth, m.ResourceHintStyle, m.PlantedHintStyle)
+			headerCells = append(headerCells, activeHeaderStyle.Render(head))
 		}
 		gridRows = append(gridRows, lipgloss.JoinHorizontal(lipgloss.Top, headerCells...))
 		gridRows = append(gridRows, m.SeparatorStyle.Faint(true).Render(strings.Repeat("─", sepWidth)))
@@ -926,7 +935,7 @@ func (m Model) View() string {
 						style = activeSelectedCellStyle
 					}
 
-					planted := len(m.plantedOn(currentBoard, p)) > 0
+					planted := !areaMark[category] && len(m.plantedOn(currentBoard, p)) > 0
 					cellContent := projectCell(name, hasResource, planted, contentWidth, m.ResourceHintStyle, m.PlantedHintStyle)
 					rowCells = append(rowCells, style.Render(cellContent))
 				} else {

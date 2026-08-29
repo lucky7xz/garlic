@@ -3,7 +3,6 @@ package remote
 import (
 	"bytes"
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 
@@ -199,7 +198,7 @@ type Plan struct {
 	Take      []string // harvest: overwrite local with the remote's version
 	Park      []string // harvest: contested, so set the remote's version beside yours
 	Push      []string // plant: send this local file over
-	Left      []string // harvest: new on the remote, but not something the board shows
+	Left      []string // harvest: new on the remote, in a category nobody planted
 	Gone      []string // the agent deleted it — reported, never acted on
 	Blocked   []string // plant: the agent has touched it, so it is not overwritten
 	LocalGone []string // you deleted it locally; the remote copy is left alone
@@ -287,20 +286,21 @@ func inScope(rel string, addr Address, ext string, wholeFolder bool) bool {
 	return parts[2] == addr.Project+ext || (parts[2] == addr.Project && len(parts) > 3)
 }
 
-// visibility answers whether a file that appeared on the remote is something
-// the board would show, or a resource belonging to something it would show.
-// Anything else is left where the agent put it.
+// visibility answers whether a file that appeared on the remote may come home.
+// Nothing does unless it was planted for: the manifest is the only record of
+// what was actually handed over, and the remote does not get to enlist work here
+// by leaving it lying around.
+//
+// The unit is the category. Sending a project into an area puts the whole area
+// in play, so the agent can add work where you sent it; an area you never
+// planted into stays put, however much it looks like a board. That is also what
+// makes the two bulb kinds stop needing separate answers -- a semi bulb's folder
+// travels whole because it is the project, a full bulb's area travels whole
+// because you planted into it, and both are the same question.
 type visibility struct {
-	Bulb     string
-	Ext      string
-	Statuses []string
-	Tags     map[string]string // project path → its status tag, read from the remote
-	Remote   Census
-	Planted  Manifest // anything in here came off the board to begin with
-	Ignore   []string
-	// WholeFolder marks a semi bulb: the folder is the project, so everything
-	// under a folder holding a clove belongs to it.
-	WholeFolder bool
+	Bulb    string
+	Planted Manifest
+	Ignore  []string
 }
 
 func (v visibility) allows(rel string) bool {
@@ -308,38 +308,16 @@ func (v visibility) allows(rel string) bool {
 	if len(parts) < 3 || parts[0] != v.Bulb || ignored(rel, v.Ignore) {
 		return false
 	}
-
-	if v.WholeFolder {
-		return v.folderInPlay(parts[0] + "/" + parts[1])
-	}
-
-	if len(parts) == 3 {
-		if _, planted := v.Planted[rel]; planted {
-			return true
-		}
-		return strings.HasSuffix(parts[2], v.Ext) && slices.Contains(v.Statuses, v.Tags[rel])
-	}
-
-	// Deeper than a project file: it is a resource, and it travels only if the
-	// project that owns the folder is itself on the board.
-	owner := strings.Join(parts[:2], "/") + "/" + parts[2] + v.Ext
-	if _, exists := v.Remote[owner]; !exists {
-		return false
-	}
-	return v.allows(owner)
+	return v.plantedUnder(parts[0] + "/" + parts[1])
 }
 
-// folderInPlay reports whether a semi bulb's folder holds a clove at its top
-// level, either now on the remote or back when it was planted. That marker is
-// what puts the folder in play.
-func (v visibility) folderInPlay(folder string) bool {
-	for _, known := range []map[string]string{v.Remote, v.Planted} {
-		for rel := range known {
-			if strings.HasPrefix(rel, folder+"/") &&
-				strings.Count(rel, "/") == 2 &&
-				strings.HasSuffix(rel, v.Ext) {
-				return true
-			}
+// plantedUnder reports whether anything was planted inside a category. The
+// separator is part of the comparison: without it "epics/bio" would match
+// "epics/bioz/cardio.md" and harvest a tree nobody sent.
+func (v visibility) plantedUnder(category string) bool {
+	for rel := range v.Planted {
+		if strings.HasPrefix(rel, category+"/") {
+			return true
 		}
 	}
 	return false

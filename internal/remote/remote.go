@@ -172,10 +172,7 @@ func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
 				here.String(), c.Describe())
 		}
 
-		p, taken, err := reckon(c, bulb, here, manifest, remote, all)
-		if err != nil {
-			return err
-		}
+		p, taken := reckon(bulb, here, manifest, remote, all)
 
 		if apply {
 			if err := collect(c, bulb, p); err != nil {
@@ -208,39 +205,20 @@ func bulbCensus(bulb domain.BoardOptions) (Census, error) {
 	return localCensus(files)
 }
 
-// reckon builds the three states for one bulb and reads them.
-func reckon(c *conn, bulb domain.BoardOptions, addr Address, manifest Manifest, remote, all Census) (Plan, Census, error) {
-	ext := bulb.Extension
+// reckon builds the three states for one bulb and reads them. It asks the
+// remote nothing: with the manifest deciding what may come home, a hash is all
+// there is to compare.
+func reckon(bulb domain.BoardOptions, addr Address, manifest Manifest, remote, all Census) (Plan, Census) {
 	local := scope(all, addr, bulb)
 	planted := Manifest(scope(Census(manifest), addr, bulb))
 	there := scope(remote, addr, bulb)
 
-	moves := Classify(planted, local, there)
-
-	// Only files that just appeared need their status tag read: everything else
-	// either came off the board already or is not a candidate.
-	var candidates []string
-	for rel, move := range moves {
-		if move == RemoteNew && strings.Count(rel, "/") == 2 && strings.HasSuffix(rel, ext) {
-			candidates = append(candidates, rel)
-		}
-	}
-	tags, err := c.statusTags(candidates)
-	if err != nil {
-		return Plan{}, nil, err
-	}
-
 	seen := visibility{
-		Bulb:        bulb.Name,
-		Ext:         ext,
-		Statuses:    bulb.Statuses,
-		Tags:        tags,
-		Remote:      there,
-		Planted:     planted,
-		Ignore:      bulb.Ignore,
-		WholeFolder: bulb.WholeFolder,
+		Bulb:    bulb.Name,
+		Planted: planted,
+		Ignore:  bulb.Ignore,
 	}
-	return HarvestPlan(moves, seen.allows), there, nil
+	return HarvestPlan(Classify(planted, local, there), seen.allows), there
 }
 
 func collect(c *conn, bulb domain.BoardOptions, p Plan) error {
@@ -327,13 +305,13 @@ var labels = map[string]map[string]string{
 	"harvest": {
 		"Take": "collected",
 		"Park": "parked (changed on both sides — your file is untouched)",
-		"Left": "left on remote (not something the board shows)",
+		"Left": "left on remote (nothing here was planted)",
 		"Gone": "removed on remote (nothing deleted here)",
 	},
 	"status": {
 		"Take":      "waiting to be collected",
 		"Park":      "changed on both sides",
-		"Left":      "on remote, not something the board shows",
+		"Left":      "on remote, in nothing you planted",
 		"Gone":      "removed on remote",
 		"Push":      "not yet planted",
 		"Blocked":   "changed by the agent",

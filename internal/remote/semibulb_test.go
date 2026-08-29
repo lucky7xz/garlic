@@ -109,19 +109,13 @@ func TestFullBulbUnaffectedByWholeFolder(t *testing.T) {
 	}
 }
 
-// On a semi bulb anything under a folder that holds a clove is collectable —
-// the folder is the project, not just the markdown in it.
+// A semi bulb needs no rule of its own any more. Its folder travels whole
+// because it is the project; a full bulb's area travels whole because you
+// planted into it. Both reduce to "was anything here planted?", so the two bulb
+// kinds stopped needing separate answers.
 func TestVisibilityWholeFolder(t *testing.T) {
 	v := visibility{
-		Bulb:        "scripts",
-		Ext:         ".clove.md",
-		Statuses:    []string{"inProgress", "onHold"},
-		WholeFolder: true,
-		Remote: Census{
-			"scripts/garlic/revise.clove.md": "A",
-			"scripts/garlic/main.go":         "B",
-			"scripts/neofetch/neofetch.sh":   "C",
-		},
+		Bulb:    "scripts",
 		Planted: Manifest{"scripts/garlic/revise.clove.md": "A"},
 	}
 
@@ -130,10 +124,13 @@ func TestVisibilityWholeFolder(t *testing.T) {
 		rel  string
 		want bool
 	}{
-		{"source file in a folder that has a clove", "scripts/garlic/main.go", true},
+		{"source file in a folder that was planted", "scripts/garlic/main.go", true},
 		{"nested source file", "scripts/garlic/internal/ui/tui.go", true},
 		{"a new clove in the same folder", "scripts/garlic/notes.clove.md", true},
-		{"anything in a folder with no clove", "scripts/neofetch/neofetch.sh", false},
+		{"anything in a folder that was never planted", "scripts/neofetch/neofetch.sh", false},
+		// A clove on the remote used to put a folder in play on its own. It no
+		// longer does: the remote does not get to enlist folders here.
+		{"a folder the remote gave a clove of its own", "scripts/theirs/theirs.clove.md", false},
 		{"loose file at bulb level", "scripts/stray.go", false},
 		{"another bulb", "epics/fitness/running.md", false},
 	}
