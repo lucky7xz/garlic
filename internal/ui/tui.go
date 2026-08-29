@@ -923,12 +923,12 @@ func (m Model) View() string {
 					name = strings.TrimSuffix(name, ".clove.md")
 					name = strings.TrimSuffix(name, ".md")
 
-					// Check for resource folder indicator
+					// Asked every render rather than at scan time on purpose: the
+					// watcher does not follow resource folders that existed before
+					// launch, so a file dropped in through a file manager would
+					// leave a scan-time answer stale.
 					resPath := filepath.Join(currentBoard.Opts.Path, category, name)
-					hasResource := false
-					if info, err := os.Stat(resPath); err == nil && info.IsDir() {
-						hasResource = true
-					}
+					hasResource := filesystem.HasEntries(resPath)
 
 					style := activeCellStyle
 					if statusIdx == m.GridCursor.Status && catIdx == m.GridCursor.Category && i == m.GridCursor.Project {

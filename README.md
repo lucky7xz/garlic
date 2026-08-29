@@ -75,7 +75,7 @@ Garlic determines a project's status by scanning for a status tag within the fil
 ├── epics/                        ← Full Bulb (every .md is tracked)
 │   ├── fitness/
 │   │   ├── running.md             ← (contains #statustag-inProgress)
-│   │   └── running/              ← resource folder (indicated by *)
+│   │   └── running/              ← resource folder (marked 📎 when it holds something)
 │   │       ├── plan.pdf
 │   │       └── progress.csv
 │   └── learning/
@@ -158,7 +158,7 @@ statuses = ["inProgress", "onHold"]
 ### 🛠️ Bring Your Own Tools
 Garlic handles the "where", but leaves the "how" to your favorite terminal tools.
 - `Enter` / `Space` – Open selected file in your editor
-- `r` – Open resource folder in your file manager (projects with resources are marked with a themed `*`)
+- `r` – Open resource folder in your file manager (marked 📎 when the folder holds something; an empty one is not marked)
 
 ### Management
 - `i` – create a new task file in the current location

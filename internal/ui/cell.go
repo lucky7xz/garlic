@@ -3,8 +3,10 @@ package ui
 import "github.com/charmbracelet/lipgloss"
 
 const (
-	// resourceMark says the project has a resource folder.
-	resourceMark = "*"
+	// resourceMark says the project's resource folder holds something. An empty
+	// one goes unmarked: a mark that opens onto nothing is a promise the board
+	// cannot keep.
+	resourceMark = "📎"
 	// plantedMark says a remote is holding this project, as of the last check.
 	// Which remote, and when you asked, are said elsewhere -- the card only has
 	// room to say yes.
