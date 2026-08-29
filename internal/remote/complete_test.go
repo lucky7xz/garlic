@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -144,4 +145,130 @@ func TestCompletionScript(t *testing.T) {
 	if _, err := CompletionScript("fish"); err == nil {
 		t.Error("CompletionScript(fish) succeeded, want an error naming what is shipped")
 	}
+}
+
+// Installing writes the hook where bash-completion looks for it by name, so the
+// shell loads it the first time you type `garlic` and no dotfile is touched.
+func TestInstallCompletion(t *testing.T) {
+	home := t.TempDir()
+
+	path, err := InstallCompletion(home)
+	if err != nil {
+		t.Fatalf("InstallCompletion failed: %v", err)
+	}
+
+	want := filepath.Join(home, ".local", "share", "bash-completion", "completions", "garlic")
+	if path != want {
+		t.Errorf("wrote %q, want %q", path, want)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("nothing at %q: %v", path, err)
+	}
+	if !strings.Contains(string(got), "complete -F _garlic garlic") {
+		t.Errorf("the hook is not in the file:\n%s", got)
+	}
+
+	// Running it again must not fail: reinstalling after an upgrade is the
+	// normal thing to do.
+	if _, err := InstallCompletion(home); err != nil {
+		t.Errorf("second install failed: %v", err)
+	}
+}
+
+// `garlic init` is the moment garlic is being set up, so it is where the offer
+// belongs -- but it only ever offers. Nothing is written to a shell's config,
+// and saying no leaves the machine exactly as it was.
+func TestOfferCompletion(t *testing.T) {
+	installed := func(home string) bool {
+		_, err := os.Stat(filepath.Join(home, ".local", "share", "bash-completion", "completions", "garlic"))
+		return err == nil
+	}
+
+	t.Run("yes installs it", func(t *testing.T) {
+		home := t.TempDir()
+		var out bytes.Buffer
+
+		if err := OfferCompletion(&out, strings.NewReader("y\n"), home); err != nil {
+			t.Fatalf("OfferCompletion failed: %v", err)
+		}
+		if !installed(home) {
+			t.Error("said yes, nothing was written")
+		}
+		if !strings.Contains(out.String(), "new shell") {
+			t.Errorf("never says it takes a new shell to take effect:\n%s", out.String())
+		}
+	})
+
+	t.Run("no leaves the machine alone", func(t *testing.T) {
+		home := t.TempDir()
+		var out bytes.Buffer
+
+		if err := OfferCompletion(&out, strings.NewReader("n\n"), home); err != nil {
+			t.Fatalf("OfferCompletion failed: %v", err)
+		}
+		if installed(home) {
+			t.Error("said no, something was written anyway")
+		}
+	})
+
+	t.Run("no answer is a no, not a hang", func(t *testing.T) {
+		home := t.TempDir()
+		var out bytes.Buffer
+
+		if err := OfferCompletion(&out, strings.NewReader(""), home); err != nil {
+			t.Fatalf("OfferCompletion failed: %v", err)
+		}
+		if installed(home) {
+			t.Error("no answer was taken as yes")
+		}
+	})
+
+	// This rides on every status, so the ordinary case -- already installed --
+	// has to print nothing at all.
+	t.Run("already installed, so it says nothing", func(t *testing.T) {
+		home := t.TempDir()
+		if _, err := InstallCompletion(home); err != nil {
+			t.Fatal(err)
+		}
+
+		var out bytes.Buffer
+		if err := OfferCompletion(&out, strings.NewReader(""), home); err != nil {
+			t.Fatalf("OfferCompletion failed: %v", err)
+		}
+		if out.String() != "" {
+			t.Errorf("status would print this every time:\n%s", out.String())
+		}
+	})
+
+	// Declining keeps no record, so the offer returns next time -- but it has to
+	// leave you a way to do it by hand meanwhile.
+	t.Run("declining names the manual way", func(t *testing.T) {
+		home := t.TempDir()
+		var out bytes.Buffer
+
+		if err := OfferCompletion(&out, strings.NewReader("n\n"), home); err != nil {
+			t.Fatalf("OfferCompletion failed: %v", err)
+		}
+		if !strings.Contains(out.String(), "garlic completion bash") {
+			t.Errorf("no way back is offered:\n%s", out.String())
+		}
+	})
+
+	// What lands on disk has to be the script that was tested to work.
+	t.Run("what is written is the tested script", func(t *testing.T) {
+		home := t.TempDir()
+		if err := OfferCompletion(&bytes.Buffer{}, strings.NewReader("y\n"), home); err != nil {
+			t.Fatalf("OfferCompletion failed: %v", err)
+		}
+
+		got, err := os.ReadFile(filepath.Join(home, ".local", "share", "bash-completion", "completions", "garlic"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != bashCompletion {
+			t.Errorf("wrote something other than the completion script:\n%s", got)
+		}
+	})
 }

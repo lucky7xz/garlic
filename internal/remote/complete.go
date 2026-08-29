@@ -2,6 +2,9 @@ package remote
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -156,4 +159,58 @@ func CompletionScript(shell string) (string, error) {
 		return bashCompletion, nil
 	}
 	return "", fmt.Errorf("no completion for %q — garlic ships bash", shell)
+}
+
+// OfferCompletion asks whether to set tab completion up, and does it if so.
+//
+// Tab completion is the shell's doing, not garlic's: bash has to be told to ask
+// garlic, and a program cannot reach into a running shell to say so. So it has
+// to be written down once. This writes a file bash-completion loads by name,
+// which is why nothing goes near your .bashrc.
+//
+// It only ever offers, and it says nothing at all once the file is there -- it
+// runs on the back of every status, so the ordinary case has to be silent. A no
+// leaves the machine exactly as it was, and comes back next time: remembering a
+// refusal would mean keeping state on this machine, which is the one thing
+// garlic has refused throughout.
+func OfferCompletion(w io.Writer, r io.Reader, home string) error {
+	path := completionPath(home)
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+
+	fmt.Fprintln(w, "\nTab completion lets `garlic plant ep<tab>` fill in your bulbs and projects.")
+	fmt.Fprintln(w, "It reads only this machine — tab never opens an ssh connection.")
+	if !confirm(w, r, []gate{{prompt: "set it up for bash? [y/N] "}}) {
+		fmt.Fprintln(w, "skipped — `garlic completion bash` prints it if you change your mind")
+		return nil
+	}
+
+	written, err := InstallCompletion(home)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "wrote %s — open a new shell and tab works\n", written)
+	return nil
+}
+
+// InstallCompletion writes the hook where bash-completion looks for it: a file
+// named after the command, which the shell loads the first time you type it.
+// That is why nothing goes in .bashrc -- bash finds this by name, on demand.
+//
+// It returns the path it wrote, and overwrites an existing one, since
+// reinstalling after an upgrade is the ordinary thing to do.
+func InstallCompletion(home string) (string, error) {
+	path := completionPath(home)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, []byte(bashCompletion), 0644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func completionPath(home string) string {
+	return filepath.Join(home, ".local", "share", "bash-completion", "completions", "garlic")
 }

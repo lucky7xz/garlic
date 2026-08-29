@@ -41,7 +41,17 @@ func Run(cfg domain.Config, args []string) error {
 	case "harvest":
 		return harvest(cfg, c, cmd.Address, true)
 	case "status":
-		return harvest(cfg, c, cmd.Address, false)
+		if err := harvest(cfg, c, cmd.Address, false); err != nil {
+			return err
+		}
+		// status is the calm, read-only verb, so it is where garlic mentions the
+		// one thing it cannot install for itself: the shell hook that makes tab
+		// ask garlic. Only after the report, and only to a person -- a piped
+		// status stays clean.
+		if home, err := os.UserHomeDir(); err == nil && term.IsTerminal(int(os.Stdin.Fd())) {
+			return OfferCompletion(os.Stdout, os.Stdin, home)
+		}
+		return nil
 	case "wipe":
 		return wipe(cfg, c, cmd.Address)
 	}
