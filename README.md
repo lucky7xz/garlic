@@ -169,131 +169,89 @@ Garlic handles the "where", but leaves the "how" to your favorite terminal tools
 
 ## 🌱 Planting and harvesting
 
-Garlic can hand work to another machine and collect the results. This machine is
-always the source of truth; the remote is derived and disposable.
+Hand a project to another machine — often an agent — let it work, and collect the
+results. This machine is always the source of truth; the remote is derived and
+disposable.
 
-```bash
-garlic plant   epics                 @ agent   # send a bulb
-garlic plant   scripts/drako         @ agent   # send one area
-garlic harvest epics/fitness/running @ agent   # collect one project
-garlic status                        @ agent   # ask the remote, change nothing
-garlic wipe    epics/fitness/running @ agent   # reset one project
-garlic wipe                          @ agent   # every bulb
-```
-
-Tab completion works on all of them: `garlic plant ep<TAB>` fills in `epics/`,
-and tabbing on walks the areas and projects. It reads only this machine — the
-only thing that can be planted anyway — so tab never opens an ssh connection.
-
-Bash has to be told to ask garlic, and no program can do that to a running shell,
-so `garlic status` offers to write the hook the first time it finds it missing.
-Say yes once and every new shell has it. (`garlic completion bash` prints the
-same script if you would rather place it yourself.)
-
-Every command reads *verb, address, at, machine*. The address is the board's own
-coordinates — `bulb`, `bulb/area`, or `bulb/area/project`. `@ <remote>` is always
-required, so `garlic plant epics` on its own can never reach another machine.
-
-What travels depends on the bulb. On a **full bulb** a project is its file plus
-its resource folder. On a **semi bulb** the folder *is* the project, so a
-`.clove.md` puts the whole directory in play — including whatever else lives
-there. Two things never cross:
-
-- **`.git`, always.** Not a size rule but a correctness one: rsync merges without
-  deleting, so a harvested `refs/` or `index` would land on top of yours while
-  your objects stayed, leaving branch pointers and worktree disagreeing.
-- **Whatever you list in `ignore`**, matched as whole path segments, so `dist`
-  cannot swallow `distributed`.
-
-```toml
-[[semi-bulb]]
-path     = "~/shara/scripts"
-statuses = ["inProgress", "onHold"]
-ignore   = ["dist", "node_modules", "target", ".venv"]
-```
-
-Define the machine in `~/.config/garlic/config.toml`:
+**1. Point garlic at the machine** in `~/.config/garlic/config.toml`:
 
 ```toml
 [[remote]]
 name          = "agent"
 host          = "you@1.2.3.4"
-port          = 2222                  # optional
-identity_file = "~/.ssh/agent_key"    # optional
 root          = "~/shara"             # a path on the OTHER machine
+# port          = 2222
+# identity_file = "~/.ssh/agent_key"
 ```
 
-Needs `ssh`, `rsync` and `sha256sum` at both ends. Garlic itself does not have to
-be installed on the remote — it writes a plain tree inside `root` and nothing
-outside it.
+Needs `ssh`, `rsync` and `sha256sum` at both ends. Nothing is installed over
+there — garlic writes a plain tree inside `root` and nothing outside it.
 
-`wipe` takes an address like the others, and what it names dies whole — including
-work the agent left that you never harvested. No address means every bulb.
-Anything in the root that is not a bulb is never touched, so a `root` shared with
-the remote's own work survives.
+**2. Use the four verbs:**
 
-It asks first, and harder the wider it reaches: a project wants its name typed, a
-bulb wants the name and the file count, the whole remote wants four answers. The
-count comes from the summary, so it cannot be typed without reading what is about
-to go.
+```bash
+garlic plant   epics/fitness/running @ agent   # send it
+garlic status                        @ agent   # what changed over there?
+garlic harvest epics/fitness/running @ agent   # bring the work back
+garlic wipe    epics/fitness/running @ agent   # reset it, then plant again
+```
+
+The address is the board's own coordinates — `bulb`, `bulb/area`, or
+`bulb/area/project` — so `garlic plant epics` sends a whole bulb. `@ <remote>` is
+always required, which is why `garlic plant epics` alone can never reach another
+machine. Tab completion fills addresses in; `garlic status` offers to set it up
+the first time it finds it missing, or `garlic completion bash` prints the hook
+to place yourself.
+
+**What travels:** on a full bulb, a project file plus its resource folder. On a
+semi bulb the folder *is* the project, so all of it goes. `.git` never travels,
+and you can exclude more per bulb:
+
+```toml
+[[semi-bulb]]
+path   = "~/shara/scripts"
+ignore = ["dist", "node_modules", "target", ".venv"]
+```
 
 ### 🌱 What is planted where
 
-Press `c` on the board to **check**. Garlic asks every configured remote what it
-is holding, and any project sitting out there gets a `🌱`. Move the cursor onto
-one and the footer names the machine:
+Press `c` on the board. Garlic asks every configured remote what it is holding
+and marks what is out there:
 
 ```
-│bioz         ││decks🌱      │   ← sent one project / sent the whole area
+│bioz         ││decks🌱      │   ← one project sent / the whole area sent
 │mealprep🌱   ││revise       │
 │sleeplog     ││release      │
 
 🌱 planted on agent 3d ago • checked 14:20   ← cursor on mealprep
-?: help • q: quit • 🌱 checked 14:20         ← cursor anywhere else
 ```
 
 The mark shows what you sent, at the size you sent it: plant one project and the
-project is marked, plant the area and the column is marked instead. The two
-times answer different questions — how long the work has been over there, and
-how stale this picture of it is. Everything about planting shares the footer, so
-a check never moves the board underneath you.
+project is marked, plant the area and the column is marked instead. The two times
+answer different questions — how long the work has been over there, and how stale
+this picture of it is.
 
-Garlic does not remember any of this. It keeps no cache and no state file — it
-goes and reads the manifest, and the answer lives until you quit. An unchecked
-board is honestly blank: nothing has been asked yet, which is why the footer
-stamps the time once you have. A check is one `cat` per remote, so it is cheap
-enough to press whenever you wonder.
+Nothing is cached. An unmarked board means you have not asked yet, which is why
+the footer stamps the time once you have.
 
-To delegate, write `#AT` into a project file to mark a task for the agent:
-
-```markdown
-#statustag-inProgress
-
-- [ ] aggregate last week's logs #AT
-- [x] set up the runner #AT-done
-```
-
-That is a convention between you and the agent — garlic does not read it. Like
-`#statustag-` and `#garlic-hide`, it is state carried as file content, so it
-crosses the wire for free; unlike them, nothing on the board depends on it.
-
-### 🧠 How it decides
+<details>
+<summary><b>How garlic knows who changed a file</b></summary>
 
 Planting leaves a manifest on the remote: the hashes of what was handed over.
 That gives garlic three states for every file — as planted, as it is on the
-remote now, as it is here now — which is exactly what it takes to know *who
-moved a file*, rather than merely that it differs.
+remote now, as it is here now — which is exactly what it takes to know *who moved
+a file*, rather than merely that it differs.
 
-- Collected: the agent changed it and you did not.
-- Parked: you both changed it. Your file is untouched; the remote's version is
+- **Collected:** the agent changed it and you did not.
+- **Parked:** you both changed it. Your file is untouched; the remote's version is
   set down inside the project's resource folder as `<name>.remote.md`. Parking
-  counts as handing the conflict over, so the next `plant` will send your
-  version — merge first if you want theirs.
-- Reported only: the agent deleted it. **Garlic never deletes anything of yours**
-  — `#garlic-hide` is the delete that travels, because it is content.
-- Left alone: planting skips anything the agent has touched, the exact mirror of
-  the rule above.
-- Left on the remote: anything in an area you never planted into. Harvest
+  counts as handing the conflict over, so the next `plant` will send your version
+  — merge first if you want theirs.
+- **Reported only:** the agent deleted it. **Garlic never deletes anything of
+  yours** — `#garlic-hide` is the delete that travels, because it is content.
+- **Left alone:** planting skips anything the agent has touched, the exact mirror
+  of the rule above.
+- **Left on the remote:** anything in an area you never planted into. Harvest
   collects only what the manifest covers, so a remote's own folders stay its own
   — but inside an area you did plant, whatever the agent adds comes home.
 
@@ -301,6 +259,36 @@ Garlic keeps no state on this machine. The manifest lives on the remote next to
 what it describes — one per bulb, inside it — so wiping a bulb takes its record
 along with its folder, and `harvest` against a remote with no manifest refuses
 rather than guessing.
+
+</details>
+
+<details>
+<summary><b>What never travels, and why</b></summary>
+
+`.git` is excluded always, and it is not a size rule but a correctness one: rsync
+merges without deleting, so a harvested `refs/` or `index` would land on top of
+yours while your objects stayed, leaving branch pointers and worktree
+disagreeing.
+
+Everything else is up to you, via `ignore` on the bulb. Patterns match whole path
+segments rather than substrings, so `dist` cannot swallow `distributed`.
+
+</details>
+
+<details>
+<summary><b>Why wipe asks harder the wider it reaches</b></summary>
+
+An address means the folder dies whole — including work the agent left that you
+never harvested. No address means every bulb. Anything in the root that is not a
+bulb is never touched, so a `root` shared with the remote's own work survives.
+
+Because typing `epics` when you meant `epics/bioz` is the accident worth
+preventing, wipe asks in proportion to what it would take: a project wants its
+name typed, an area a confirmation and its name, a bulb the name and the file
+count, the whole remote four answers. The count comes from the summary printed
+first, so it cannot be typed without reading what is about to go.
+
+</details>
 
 ## 🎨 Theming
 
