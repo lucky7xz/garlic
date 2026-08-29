@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/lucky7xz/garlic/internal/domain"
 )
@@ -55,7 +56,7 @@ func wipe(c *conn, all bool) error {
 		return nil
 	}
 
-	manifest, planted, err := c.readManifest()
+	base, planted, err := c.readManifest()
 	if err != nil {
 		return err
 	}
@@ -64,7 +65,7 @@ func wipe(c *conn, all bool) error {
 		return nil
 	}
 
-	rels := sortedKeys(manifest)
+	rels := sortedKeys(base.Hashes)
 	if err := c.wipePlanted(rels); err != nil {
 		return err
 	}
@@ -93,12 +94,15 @@ func plant(cfg domain.Config, c *conn, addr Address) error {
 	}
 
 	// A first plant has no baseline yet; it is the thing creating one.
-	manifest, _, err := c.readManifest()
+	base, _, err := c.readManifest()
 	if err != nil {
 		return err
 	}
-	if manifest == nil {
-		manifest = Manifest{}
+	if base.Hashes == nil {
+		base.Hashes = Manifest{}
+	}
+	if base.Planted == nil {
+		base.Planted = Plantings{}
 	}
 
 	remote, err := c.census()
@@ -107,7 +111,7 @@ func plant(cfg domain.Config, c *conn, addr Address) error {
 	}
 
 	moves := Classify(
-		Manifest(scope(Census(manifest), addr, bulb)),
+		Manifest(scope(Census(base.Hashes), addr, bulb)),
 		local,
 		scope(remote, addr, bulb),
 	)
@@ -116,10 +120,15 @@ func plant(cfg domain.Config, c *conn, addr Address) error {
 	if err := c.push(bulb, trimBulb(bulb, p.Push)); err != nil {
 		return err
 	}
+	// Planting is the only thing that stamps a time: it is the moment the work
+	// went out. Harvest advances hashes but leaves the stamp, because collecting
+	// does not change how long a thing has been over there.
+	now := time.Now()
 	for _, rel := range p.Push {
-		manifest[rel] = local[rel]
+		base.Hashes[rel] = local[rel]
+		base.Planted[rel] = now
 	}
-	if err := c.writeManifest(manifest); err != nil {
+	if err := c.writeManifest(base); err != nil {
 		return err
 	}
 
@@ -130,7 +139,7 @@ func plant(cfg domain.Config, c *conn, addr Address) error {
 // harvest collects what the agent produced. With apply false it is `status`:
 // the same reckoning, printed and not acted on.
 func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
-	manifest, planted, err := c.readManifest()
+	base, planted, err := c.readManifest()
 	if err != nil {
 		return err
 	}
@@ -167,12 +176,12 @@ func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
 		// Only an address the user actually typed can be a typo. Without one,
 		// each bulb is simply reckoned against its own slice of the root, and
 		// having nothing there is an ordinary answer.
-		if addr.Area != "" && !addressNames(here, bulb, all, Census(manifest), remote) {
+		if addr.Area != "" && !addressNames(here, bulb, all, Census(base.Hashes), remote) {
 			return fmt.Errorf("nothing at %q — not on the board here, not in the manifest, not on %s",
 				here.String(), c.Describe())
 		}
 
-		p, taken := reckon(bulb, here, manifest, remote, all)
+		p, taken := reckon(bulb, here, base.Hashes, remote, all)
 
 		if apply {
 			if err := collect(c, bulb, p); err != nil {
@@ -183,14 +192,14 @@ func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
 			// has been handed over; leaving the baseline behind would deadlock
 			// the file, since plant refuses to push while the remote has moved.
 			for _, rel := range append(p.Take, p.Park...) {
-				manifest[rel] = taken[rel]
+				base.Hashes[rel] = taken[rel]
 			}
 		}
 		report(verbLabel(apply), here.String(), c.Describe(), p)
 	}
 
 	if apply {
-		return c.writeManifest(manifest)
+		return c.writeManifest(base)
 	}
 	return nil
 }

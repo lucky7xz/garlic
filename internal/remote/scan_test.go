@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -8,40 +9,50 @@ import (
 
 var noon = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 
+// held is a remote holding these paths, with no planting times recorded -- the
+// shape of a manifest written before garlic kept them.
+func held(rels ...string) Baseline {
+	b := Baseline{Hashes: Manifest{}, Planted: Plantings{}}
+	for i, rel := range rels {
+		b.Hashes[rel] = fmt.Sprintf("hash%d", i)
+	}
+	return b
+}
+
 // Fold turns "what each remote admits to holding" into "who holds this path".
 // It is the whole of a check that is worth testing: the rest is one cat.
 func TestFold(t *testing.T) {
 	cases := []struct {
 		name  string
 		order []string
-		seen  map[string]Manifest
+		seen  map[string]Baseline
 		want  map[string][]string
 	}{
 		{
 			"one remote, one path",
 			[]string{"agent"},
-			map[string]Manifest{"agent": {"epics/bioz/mealprep.md": "A"}},
+			map[string]Baseline{"agent": held("epics/bioz/mealprep.md")},
 			map[string][]string{"epics/bioz/mealprep.md": {"agent"}},
 		},
 		{
 			"a path on two remotes names both, in config order",
 			[]string{"agent", "berta"},
-			map[string]Manifest{
-				"berta": {"epics/bioz/mealprep.md": "B"},
-				"agent": {"epics/bioz/mealprep.md": "A"},
+			map[string]Baseline{
+				"berta": held("epics/bioz/mealprep.md"),
+				"agent": held("epics/bioz/mealprep.md"),
 			},
 			map[string][]string{"epics/bioz/mealprep.md": {"agent", "berta"}},
 		},
 		{
 			"hashes are irrelevant: a check asks where, not whether it moved",
 			[]string{"agent"},
-			map[string]Manifest{"agent": {"a.md": "X", "b.md": "Y"}},
+			map[string]Baseline{"agent": held("a.md", "b.md")},
 			map[string][]string{"a.md": {"agent"}, "b.md": {"agent"}},
 		},
 		{
 			"a remote that answered with nothing still answered",
 			[]string{"agent"},
-			map[string]Manifest{"agent": {}},
+			map[string]Baseline{"agent": held()},
 			map[string][]string{},
 		},
 	}
@@ -65,8 +76,8 @@ func TestFold(t *testing.T) {
 // A remote that never answered must not be claimed as checked, or the header
 // would say "checked" about a host that was down.
 func TestFoldSkipsHostsThatDidNotAnswer(t *testing.T) {
-	got := Fold(noon, []string{"agent", "berta"}, map[string]Manifest{
-		"agent": {"a.md": "A"},
+	got := Fold(noon, []string{"agent", "berta"}, map[string]Baseline{
+		"agent": held("a.md"),
 	})
 
 	if !reflect.DeepEqual(got.Hosts, []string{"agent"}) {
@@ -85,7 +96,7 @@ func TestSightingChecked(t *testing.T) {
 		t.Error("the zero Sighting must not claim to have been checked")
 	}
 
-	answered := Fold(noon, []string{"agent"}, map[string]Manifest{"agent": {}})
+	answered := Fold(noon, []string{"agent"}, map[string]Baseline{"agent": held()})
 	if !answered.Checked() {
 		t.Error("a remote that answered with an empty manifest is still an answer")
 	}
@@ -99,8 +110,8 @@ func TestSightingChecked(t *testing.T) {
 }
 
 func TestSightingOn(t *testing.T) {
-	s := Fold(noon, []string{"agent"}, map[string]Manifest{
-		"agent": {"epics/bioz/mealprep.md": "A"},
+	s := Fold(noon, []string{"agent"}, map[string]Baseline{
+		"agent": held("epics/bioz/mealprep.md"),
 	})
 
 	if got := s.On("epics/bioz/mealprep.md"); !reflect.DeepEqual(got, []string{"agent"}) {
@@ -130,8 +141,8 @@ func TestCheckWithoutRemotes(t *testing.T) {
 // not match "bioz": comparing prefixes without the separator marks the wrong
 // column and, on the harvest side, collects a tree nobody sent.
 func TestSightingUnder(t *testing.T) {
-	s := Fold(noon, []string{"agent"}, map[string]Manifest{
-		"agent": {"epics/bioz/mealprep.md": "A"},
+	s := Fold(noon, []string{"agent"}, map[string]Baseline{
+		"agent": held("epics/bioz/mealprep.md"),
 	})
 
 	cases := []struct {
@@ -152,5 +163,33 @@ func TestSightingUnder(t *testing.T) {
 
 	if (Sighting{}).Under("epics/bioz") {
 		t.Error("nothing is planted before a check has run")
+	}
+}
+
+// The age shown on the board is the planting time, not the check time. Across
+// several remotes the earliest wins, so it reads "out there at least this long".
+func TestSightingPlantedAt(t *testing.T) {
+	earlier := noon.Add(-48 * time.Hour)
+
+	stamped := func(rel string, at time.Time) Baseline {
+		return Baseline{Hashes: Manifest{rel: "A"}, Planted: Plantings{rel: at}}
+	}
+
+	s := Fold(noon, []string{"agent", "berta"}, map[string]Baseline{
+		"agent": stamped("epics/bioz/mealprep.md", noon),
+		"berta": stamped("epics/bioz/mealprep.md", earlier),
+	})
+
+	if got := s.PlantedAt("epics/bioz/mealprep.md"); !got.Equal(earlier) {
+		t.Errorf("PlantedAt = %v, want the earliest (%v)", got, earlier)
+	}
+
+	// A manifest with no times, or a path nobody planted, has no age to report.
+	old := Fold(noon, []string{"agent"}, map[string]Baseline{"agent": held("a.md")})
+	if !old.PlantedAt("a.md").IsZero() {
+		t.Error("invented an age for a manifest that records no times")
+	}
+	if !s.PlantedAt("nothing/here.md").IsZero() {
+		t.Error("invented an age for a path nobody planted")
 	}
 }

@@ -155,24 +155,24 @@ func (c *conn) census() (Census, error) {
 
 // readManifest reports whether the remote has a baseline at all. Without one,
 // nothing can be said about who moved what.
-func (c *conn) readManifest() (Manifest, bool, error) {
+func (c *conn) readManifest() (Baseline, bool, error) {
 	out, err := c.run(fmt.Sprintf("cat %s 2>/dev/null || true", quote(c.manifestPath())), nil)
 	if err != nil {
-		return nil, false, err
+		return Baseline{}, false, err
 	}
 	if len(bytes.TrimSpace(out)) == 0 {
-		return nil, false, nil
+		return Baseline{}, false, nil
 	}
 
-	m, err := DecodeManifest(out)
+	b, err := DecodeManifest(out)
 	if err != nil {
-		return nil, false, fmt.Errorf("manifest at %s is unreadable: %w", c.Describe(), err)
+		return Baseline{}, false, fmt.Errorf("manifest at %s is unreadable: %w", c.Describe(), err)
 	}
-	return m, true, nil
+	return b, true, nil
 }
 
-func (c *conn) writeManifest(m Manifest) error {
-	data, err := m.Encode()
+func (c *conn) writeManifest(b Baseline) error {
+	data, err := b.Encode()
 	if err != nil {
 		return err
 	}

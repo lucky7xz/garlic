@@ -133,10 +133,17 @@ func TestClassifyCoversEverySeenPath(t *testing.T) {
 func TestManifestRoundTrip(t *testing.T) {
 	// Dots in filenames are the hazard here: an unquoted TOML key would split
 	// "running.md" into nested tables.
-	want := Manifest{
-		"epics/fitness/running.md":       "a3f9",
-		"epics/fitness/running/plan.pdf": "7c21",
-		"scripts/drako/revise.clove.md":  "0001",
+	want := Baseline{
+		Hashes: Manifest{
+			"epics/fitness/running.md":       "a3f9",
+			"epics/fitness/running/plan.pdf": "7c21",
+			"scripts/drako/revise.clove.md":  "0001",
+		},
+		Planted: Plantings{
+			"epics/fitness/running.md":       noon,
+			"epics/fitness/running/plan.pdf": noon,
+			"scripts/drako/revise.clove.md":  noon,
+		},
 	}
 
 	data, err := want.Encode()
@@ -148,8 +155,28 @@ func TestManifestRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeManifest failed: %v\n%s", err, data)
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %v, want %v\nencoded as:\n%s", got, want, data)
+	if !reflect.DeepEqual(got.Hashes, want.Hashes) {
+		t.Errorf("hashes: got %v, want %v\nencoded as:\n%s", got.Hashes, want.Hashes, data)
+	}
+	for rel, when := range want.Planted {
+		if !got.Planted[rel].Equal(when) {
+			t.Errorf("planted[%q]: got %v, want %v\nencoded as:\n%s", rel, got.Planted[rel], when, data)
+		}
+	}
+}
+
+// A manifest written before garlic recorded times still reads: the hashes are
+// what every rule compares, and an entry with no time simply has no age to show.
+func TestManifestWithoutTimes(t *testing.T) {
+	got, err := DecodeManifest([]byte("[files]\n\"epics/bioz/mealprep.md\" = \"a3f9\"\n"))
+	if err != nil {
+		t.Fatalf("DecodeManifest failed: %v", err)
+	}
+	if got.Hashes["epics/bioz/mealprep.md"] != "a3f9" {
+		t.Errorf("hashes lost: %v", got.Hashes)
+	}
+	if !got.Planted["epics/bioz/mealprep.md"].IsZero() {
+		t.Errorf("invented a planting time: %v", got.Planted)
 	}
 }
 
@@ -164,8 +191,8 @@ func TestDecodeEmptyManifest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeManifest(nil) failed: %v", err)
 	}
-	if len(got) != 0 {
-		t.Errorf("got %v, want empty", got)
+	if len(got.Hashes) != 0 || len(got.Planted) != 0 {
+		t.Errorf("got %+v, want empty", got)
 	}
 }
 

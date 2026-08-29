@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -111,35 +112,55 @@ func allPaths(manifest Manifest, local, remote Census) []string {
 	return sortedKeys(seen)
 }
 
-// manifestFile is the on-disk shape. The hashes live under one table with
-// quoted keys, so a filename like "running.md" stays one key instead of
-// becoming nested tables.
+// Plantings records when each path was handed over. It rides beside the hashes
+// rather than folded into them, so every rule that compares hashes stays a
+// comparison of two strings.
+type Plantings map[string]time.Time
+
+// Baseline is the whole of what the manifest records: what was handed over, and
+// when it went.
+type Baseline struct {
+	Hashes  Manifest
+	Planted Plantings
+}
+
+// manifestFile is the on-disk shape. Both tables use quoted keys, so a filename
+// like "running.md" stays one key instead of becoming nested tables.
 type manifestFile struct {
-	Files map[string]string `toml:"files"`
+	Files   map[string]string    `toml:"files"`
+	Planted map[string]time.Time `toml:"planted"`
 }
 
 // ManifestName is where the manifest sits, inside the remote root, so that
 // wiping the root takes the baseline with it.
 const ManifestName = ".garlic-manifest.toml"
 
-func (m Manifest) Encode() ([]byte, error) {
+func (b Baseline) Encode() ([]byte, error) {
 	var buf bytes.Buffer
-	buf.WriteString("# Written by garlic. Hashes of what was planted, as planted.\n")
-	if err := toml.NewEncoder(&buf).Encode(manifestFile{Files: m}); err != nil {
+	buf.WriteString("# Written by garlic. What was handed over, as handed over.\n")
+	if err := toml.NewEncoder(&buf).Encode(manifestFile{Files: b.Hashes, Planted: b.Planted}); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
-func DecodeManifest(data []byte) (Manifest, error) {
+// DecodeManifest reads a manifest, including ones written before garlic
+// recorded times: the hashes are what every rule compares, and an entry with no
+// time simply has no age to show.
+func DecodeManifest(data []byte) (Baseline, error) {
 	var f manifestFile
 	if _, err := toml.Decode(string(data), &f); err != nil {
-		return nil, err
+		return Baseline{}, err
 	}
-	if f.Files == nil {
-		f.Files = Manifest{}
+
+	b := Baseline{Hashes: f.Files, Planted: f.Planted}
+	if b.Hashes == nil {
+		b.Hashes = Manifest{}
 	}
-	return f.Files, nil
+	if b.Planted == nil {
+		b.Planted = Plantings{}
+	}
+	return b, nil
 }
 
 // parseSums reads `sha256sum` output into a Census. Coreutils writes

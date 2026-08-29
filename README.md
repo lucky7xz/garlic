@@ -234,14 +234,15 @@ one and the footer names the machine:
 │mealprep🌱   ││revise       │
 │sleeplog     ││release      │
 
-🌱 planted on agent • 14:20        ← cursor on mealprep
-?: help • q: quit • 🌱 14:20       ← cursor anywhere else
+🌱 planted on agent 3d ago • checked 14:20   ← cursor on mealprep
+?: help • q: quit • 🌱 checked 14:20         ← cursor anywhere else
 ```
 
 The mark shows what you sent, at the size you sent it: plant one project and the
-project is marked, plant the area and the column is marked instead. Everything
-about planting shares the footer, so a check never moves the board underneath
-you.
+project is marked, plant the area and the column is marked instead. The two
+times answer different questions — how long the work has been over there, and
+how stale this picture of it is. Everything about planting shares the footer, so
+a check never moves the board underneath you.
 
 Garlic does not remember any of this. It keeps no cache and no state file — it
 goes and reads the manifest, and the answer lives until you quit. An unchecked

@@ -18,8 +18,9 @@ import (
 // having asked and found nothing.
 type Sighting struct {
 	When  time.Time
-	Hosts []string            // remotes that answered, in config order
-	Where map[string][]string // manifest path -> remotes holding it
+	Hosts []string             // remotes that answered, in config order
+	Where map[string][]string  // manifest path -> remotes holding it
+	Since map[string]time.Time // manifest path -> when it was first handed over
 }
 
 // Checked reports whether at least one remote actually answered. A check where
@@ -30,6 +31,12 @@ func (s Sighting) Checked() bool { return len(s.Hosts) > 0 }
 
 // On names the remotes holding a path, or nil for one that is not planted.
 func (s Sighting) On(rel string) []string { return s.Where[rel] }
+
+// PlantedAt says when a path went out, or the zero time when nothing recorded
+// it -- a manifest written before garlic kept times, or a file that arrived by
+// harvest and was never planted. Across several remotes it is the earliest, so
+// the answer reads "it has been out there at least this long".
+func (s Sighting) PlantedAt(rel string) time.Time { return s.Since[rel] }
 
 // Under reports whether anything is planted inside a category. Harvest decides
 // at that granularity -- planting into an area puts the whole area in play --
@@ -53,17 +60,28 @@ func (s Sighting) Under(category string) bool {
 //
 // Only remotes present in seen made it into Hosts: a host that never answered
 // must not be reported as checked.
-func Fold(when time.Time, order []string, seen map[string]Manifest) Sighting {
-	s := Sighting{When: when, Where: map[string][]string{}}
+func Fold(when time.Time, order []string, seen map[string]Baseline) Sighting {
+	s := Sighting{When: when, Where: map[string][]string{}, Since: map[string]time.Time{}}
 
 	for _, name := range order {
-		manifest, answered := seen[name]
+		base, answered := seen[name]
 		if !answered {
 			continue
 		}
 		s.Hosts = append(s.Hosts, name)
-		for rel := range manifest {
+
+		for rel := range base.Hashes {
 			s.Where[rel] = append(s.Where[rel], name)
+
+			// Earliest wins: with the same work on two remotes, what you want to
+			// know is how long it has been out, not when it last went.
+			at := base.Planted[rel]
+			if at.IsZero() {
+				continue
+			}
+			if got, ok := s.Since[rel]; !ok || at.Before(got) {
+				s.Since[rel] = at
+			}
 		}
 	}
 
@@ -99,18 +117,18 @@ func Check(remotes []domain.Remote) (Sighting, error) {
 	}
 
 	order := make([]string, 0, len(remotes))
-	seen := make(map[string]Manifest, len(remotes))
+	seen := make(map[string]Baseline, len(remotes))
 	var failures []error
 
 	for _, r := range remotes {
 		order = append(order, r.Name)
 
-		manifest, err := readPlanting(r)
+		base, err := readPlanting(r)
 		if err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", r.Name, err))
 			continue
 		}
-		seen[r.Name] = manifest
+		seen[r.Name] = base
 	}
 
 	return Fold(time.Now(), order, seen), errors.Join(failures...)
@@ -118,18 +136,18 @@ func Check(remotes []domain.Remote) (Sighting, error) {
 
 // readPlanting fetches one remote's manifest. No manifest is not a failure: it
 // is a remote that has been wiped, or never planted to, and holds nothing.
-func readPlanting(r domain.Remote) (Manifest, error) {
+func readPlanting(r domain.Remote) (Baseline, error) {
 	c, err := dial(r)
 	if err != nil {
-		return nil, err
+		return Baseline{}, err
 	}
 
-	manifest, planted, err := c.readManifest()
+	base, planted, err := c.readManifest()
 	if err != nil {
-		return nil, err
+		return Baseline{}, err
 	}
 	if !planted {
-		return Manifest{}, nil
+		return Baseline{}, nil
 	}
-	return manifest, nil
+	return base, nil
 }

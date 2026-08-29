@@ -58,12 +58,12 @@ func TestIdleFooter(t *testing.T) {
 		{
 			"checked, nothing out there",
 			func() Model { return plantedModel(map[string][]string{}) },
-			plantedMark + " 14:20", true,
+			plantedMark + " checked 14:20", true,
 		},
 		{
 			"cursor on a planted project takes the line",
 			func() Model { return plantedModel(planted) },
-			plantedMark + " planted on agent • 14:20", false,
+			plantedMark + " planted on agent • checked 14:20", false,
 		},
 		{
 			"cursor moved off it, back to the stamp",
@@ -72,7 +72,7 @@ func TestIdleFooter(t *testing.T) {
 				m.GridCursor.Project = 1 // sleeplog, never planted
 				return m
 			},
-			plantedMark + " 14:20", true,
+			plantedMark + " checked 14:20", true,
 		},
 		{
 			"a check still in flight says so",
@@ -110,15 +110,14 @@ func TestIdleFooterNamesEveryHost(t *testing.T) {
 }
 
 // The hint is what you already know; the stamp is what you pressed a key for.
-// When only one of them fits, the stamp wins. At the narrowest board garlic will
-// draw at all, both still do -- the short hint and the stamp come to 18 columns.
+// When only one of them fits, the stamp wins.
 func TestIdleFooterDropsHintOnlyWhenItMustNarrow(t *testing.T) {
 	for _, c := range []struct {
 		width    int
 		wantHint bool
 	}{
-		{minBoardWidth, true},
-		{12, false},
+		{80, true},
+		{minBoardWidth, false},
 	} {
 		m := plantedModel(map[string][]string{})
 		m.TermWidth = c.width
@@ -325,5 +324,47 @@ func TestMarksDoNotDouble(t *testing.T) {
 
 	if strings.Contains(plantedModel(nil).View(), plantedMark) {
 		t.Error("something is marked before a check has run")
+	}
+}
+
+// Two times, two questions: how long the work has been over there, and how
+// stale this picture of it is. Neither may be read as the other.
+func TestFooterNamesBothTimes(t *testing.T) {
+	m := plantedModel(map[string][]string{"epics/bioz/mealprep.md": {"agent"}})
+	m.Planted.Since = map[string]time.Time{
+		"epics/bioz/mealprep.md": checkedAt.Add(-72 * time.Hour),
+	}
+
+	got := m.idleFooter()
+	if !strings.Contains(got, "planted on agent 3d ago") {
+		t.Errorf("got %q, want the planting age", got)
+	}
+	if !strings.Contains(got, "checked 14:20") {
+		t.Errorf("got %q, want the check time named as such", got)
+	}
+
+	// A manifest written before garlic recorded times has no age to show, and
+	// must not borrow the check time as one.
+	plain := plantedModel(map[string][]string{"epics/bioz/mealprep.md": {"agent"}}).idleFooter()
+	if !strings.Contains(plain, "planted on agent"+footerSep) {
+		t.Errorf("got %q, want no age at all when none was recorded", plain)
+	}
+}
+
+func TestAgo(t *testing.T) {
+	cases := []struct {
+		d    time.Duration
+		want string
+	}{
+		{30 * time.Second, "just now"},
+		{5 * time.Minute, "5m ago"},
+		{3 * time.Hour, "3h ago"},
+		{25 * time.Hour, "1d ago"},
+		{72 * time.Hour, "3d ago"},
+	}
+	for _, c := range cases {
+		if got := ago(c.d); got != c.want {
+			t.Errorf("ago(%v) = %q, want %q", c.d, got, c.want)
+		}
 	}
 }

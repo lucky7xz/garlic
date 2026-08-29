@@ -1,10 +1,13 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucky7xz/garlic/internal/domain"
+	"github.com/lucky7xz/garlic/internal/remote"
 )
 
 // Everything the board says about planting lives on one line: the footer, which
@@ -13,9 +16,12 @@ import (
 // board sideways the moment you pressed `c`.
 //
 //	never checked          ?: help • q: quit
-//	checked, plain card    ?: help • q: quit • 🌱 14:20
-//	checked, planted card  🌱 planted on agent • 14:20
+//	checked, plain card    ?: help • q: quit • 🌱 checked 14:20
+//	checked, planted card  🌱 planted on agent 3d ago • checked 14:20
 //	check in flight        ?: help • q: quit • 🌱 checking…
+//
+// Two times, both named, because they answer different questions: how long the
+// work has been over there, and how stale this picture of it is.
 
 const footerSep = " • "
 
@@ -27,7 +33,7 @@ func (m Model) checkedAt() string {
 	case m.Checking:
 		return "checking…"
 	case m.Planted.Checked():
-		return m.Planted.When.Format("15:04")
+		return "checked " + m.Planted.When.Format("15:04")
 	}
 	return ""
 }
@@ -41,11 +47,33 @@ func (m Model) plantedWhere() string {
 		return ""
 	}
 
-	hosts := m.plantedOn(m.Boards[m.ActiveBoard], p)
+	board := m.Boards[m.ActiveBoard]
+	hosts := m.plantedOn(board, p)
 	if len(hosts) == 0 {
 		return ""
 	}
-	return "planted on " + strings.Join(hosts, ", ")
+
+	where := "planted on " + strings.Join(hosts, ", ")
+	if at := m.Planted.PlantedAt(remote.Rel(board.Opts, p.Path)); !at.IsZero() {
+		where += " " + ago(m.Planted.When.Sub(at))
+	}
+	return where
+}
+
+// ago is the age of a planting, measured against the check that reported it.
+// Days are the resolution that matters -- what has been sitting out there
+// unharvested -- so anything shorter collapses to hours and minutes.
+func ago(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }
 
 // areaPlanted reports whether a whole column went: every project in it is on a
