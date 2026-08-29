@@ -420,3 +420,58 @@ func TestVisibilityAreaIsAWholeSegment(t *testing.T) {
 		t.Error("bio is a different area from bioz and was never planted")
 	}
 }
+
+// Manifests are read in one round trip, each preceded by a marker naming its
+// bulb. Nothing inside a manifest can collide with the marker: the TOML encoder
+// escapes newlines inside quoted keys, so no line of one can begin with "###".
+func TestParseManifests(t *testing.T) {
+	stream := `### epics
+# Written by garlic. What was handed over, as handed over.
+[files]
+  "epics/bioz/mealprep.md" = "a3f9"
+### scripts
+[files]
+  "scripts/garlic/revise.clove.md" = "0001"
+
+[planted]
+  "scripts/garlic/revise.clove.md" = 2026-08-26T09:14:00Z
+`
+
+	got, err := parseManifests([]byte(stream))
+	if err != nil {
+		t.Fatalf("parseManifests failed: %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("got %d manifests, want 2: %v", len(got), got)
+	}
+	if got["epics"].Hashes["epics/bioz/mealprep.md"] != "a3f9" {
+		t.Errorf("epics lost its hashes: %v", got["epics"].Hashes)
+	}
+	if got["scripts"].Hashes["scripts/garlic/revise.clove.md"] != "0001" {
+		t.Errorf("scripts lost its hashes: %v", got["scripts"].Hashes)
+	}
+	if got["scripts"].Planted["scripts/garlic/revise.clove.md"].IsZero() {
+		t.Error("scripts lost its planting time")
+	}
+	// A bulb with no manifest is simply absent, which reads as "nothing planted".
+	if _, ok := got["decks"]; ok {
+		t.Error("invented a manifest for a bulb that has none")
+	}
+}
+
+func TestParseManifestsEmpty(t *testing.T) {
+	got, err := parseManifests(nil)
+	if err != nil {
+		t.Fatalf("parseManifests(nil) failed: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("got %v, want none", got)
+	}
+}
+
+func TestParseManifestsRejectsGarbage(t *testing.T) {
+	if _, err := parseManifests([]byte("### epics\nthis is not toml {{{\n")); err == nil {
+		t.Error("parseManifests accepted garbage, want error")
+	}
+}

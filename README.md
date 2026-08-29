@@ -177,14 +177,13 @@ garlic plant   epics                 @ agent   # send a bulb
 garlic plant   scripts/drako         @ agent   # send one area
 garlic harvest epics/fitness/running @ agent   # collect one project
 garlic status                        @ agent   # ask the remote, change nothing
-garlic wipe                          @ agent   # remove only what garlic planted
-garlic wipe --all                    @ agent   # remove everything under root
+garlic wipe    epics/fitness/running @ agent   # reset one project
+garlic wipe                          @ agent   # every bulb
 ```
 
 Every command reads *verb, address, at, machine*. The address is the board's own
-coordinates — `bulb`, `bulb/area`, or `bulb/area/project`. `@ <remote>` is
-always required, so
-`garlic plant epics` on its own can never reach another machine.
+coordinates — `bulb`, `bulb/area`, or `bulb/area/project`. `@ <remote>` is always
+required, so `garlic plant epics` on its own can never reach another machine.
 
 What travels depends on the bulb. On a **full bulb** a project is its file plus
 its resource folder. On a **semi bulb** the folder *is* the project, so a
@@ -219,9 +218,15 @@ Needs `ssh`, `rsync` and `sha256sum` at both ends. Garlic itself does not have t
 be installed on the remote — it writes a plain tree inside `root` and nothing
 outside it.
 
-A plain `wipe` removes only the files the manifest records, so a `root` shared
-with the remote's own work survives; `--all` is `rm -rf root` and has to be asked
-for by name.
+`wipe` takes an address like the others, and what it names dies whole — including
+work the agent left that you never harvested. No address means every bulb.
+Anything in the root that is not a bulb is never touched, so a `root` shared with
+the remote's own work survives.
+
+It asks first, and harder the wider it reaches: a project wants its name typed, a
+bulb wants the name and the file count, the whole remote wants four answers. The
+count comes from the summary, so it cannot be typed without reading what is about
+to go.
 
 ### 🌱 What is planted where
 
@@ -284,8 +289,9 @@ moved a file*, rather than merely that it differs.
   — but inside an area you did plant, whatever the agent adds comes home.
 
 Garlic keeps no state on this machine. The manifest lives on the remote next to
-what it describes, so `wipe` takes the memory with it — and `harvest` against a
-remote with no manifest refuses rather than guessing.
+what it describes — one per bulb, inside it — so wiping a bulb takes its record
+along with its folder, and `harvest` against a remote with no manifest refuses
+rather than guessing.
 
 ## 🎨 Theming
 

@@ -163,6 +163,50 @@ func DecodeManifest(data []byte) (Baseline, error) {
 	return b, nil
 }
 
+// manifestMarker precedes each manifest in the stream a single ssh returns.
+// Nothing inside a manifest can collide with it: the TOML encoder escapes
+// newlines inside quoted keys, so no line of one can begin with "###".
+const manifestMarker = "### "
+
+// parseManifests splits that stream into one Baseline per bulb. A bulb with no
+// manifest is simply absent, which reads as "nothing planted there".
+func parseManifests(out []byte) (map[string]Baseline, error) {
+	found := map[string]Baseline{}
+
+	var bulb string
+	var body strings.Builder
+
+	flush := func() error {
+		if bulb == "" {
+			return nil
+		}
+		base, err := DecodeManifest([]byte(body.String()))
+		if err != nil {
+			return fmt.Errorf("manifest for %q is unreadable: %w", bulb, err)
+		}
+		found[bulb] = base
+		return nil
+	}
+
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if name, marked := strings.CutPrefix(line, manifestMarker); marked {
+			if err := flush(); err != nil {
+				return nil, err
+			}
+			bulb, body = strings.TrimSpace(name), strings.Builder{}
+			continue
+		}
+		if bulb != "" {
+			body.WriteString(line)
+			body.WriteByte('\n')
+		}
+	}
+	if err := flush(); err != nil {
+		return nil, err
+	}
+	return found, nil
+}
+
 // parseSums reads `sha256sum` output into a Census. Coreutils writes
 // "<hash><space><mode><name>" where mode is ' ' or '*', and flags a line whose
 // name needed escaping with a leading backslash.

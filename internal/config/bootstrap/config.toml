@@ -77,11 +77,14 @@ statuses = ["inProgress", "onHold"]
 # │   garlic plant   scripts/drako         @ agent
 # │   garlic harvest epics/fitness/running @ agent
 # │   garlic status                        @ agent
-# │   garlic wipe                          @ agent   (only what garlic planted)
-# │   garlic wipe --all                    @ agent   (everything under root)
+# │   garlic wipe    epics/bioz/mealprep   @ agent   (reset one project)
+# │   garlic wipe                          @ agent   (every bulb)
 # │
 # │ Press `c` on the board to see what is planted where. Nothing is cached:
 # │ garlic asks the remote, and the answer lives until you quit.
+# │
+# │ wipe takes what it names, whole, and asks before it does -- harder the
+# │ wider it reaches. Anything in the root that is not a bulb is never touched.
 # │
 # │ Needs ssh, rsync and sha256sum on both ends. Garlic does not have to be
 # │ installed over there: it only ever writes a plain tree inside `root`.

@@ -26,18 +26,15 @@ type Command struct {
 	Verb    string
 	Address Address
 	Remote  string
-	// All widens wipe from "what garlic planted" to "everything under the
-	// root". Only wipe accepts it, and it has to be asked for by name.
-	All bool
 }
 
-// How deep an address each verb accepts. plant and harvest write, so they
-// insist on at least a bulb; status only reads; wipe always takes the whole root.
+// How deep an address each verb accepts. plant and harvest write, so they insist
+// on at least a bulb; status and wipe read the whole remote when given nothing.
 var verbs = map[string]struct{ min, max int }{
 	"plant":   {1, 3},
 	"harvest": {1, 3},
 	"status":  {0, 3},
-	"wipe":    {0, 0},
+	"wipe":    {0, 3},
 }
 
 // ParseCommand reads os.Args[1:].
@@ -59,12 +56,8 @@ func ParseCommand(args []string) (Command, error) {
 	}
 	cmd.Remote = remote
 
-	for len(rest) > 0 && strings.HasPrefix(rest[0], "-") {
-		if rest[0] != "--all" || cmd.Verb != "wipe" {
-			return cmd, fmt.Errorf("%s takes no %s", cmd.Verb, rest[0])
-		}
-		cmd.All = true
-		rest = rest[1:]
+	if len(rest) > 0 && strings.HasPrefix(rest[0], "-") {
+		return cmd, fmt.Errorf("%s takes no %s", cmd.Verb, rest[0])
 	}
 
 	if len(rest) > 1 {
@@ -74,16 +67,18 @@ func ParseCommand(args []string) (Command, error) {
 	var parts []string
 	if len(rest) == 1 {
 		parts = strings.Split(strings.TrimRight(rest[0], "/"), "/")
-		if slices.Contains(parts, "") {
-			return cmd, fmt.Errorf("empty segment in address %q", rest[0])
+		// "." and ".." name nothing on any board, and wipe turns an address into
+		// a list of files to delete -- so refusing beats matching nothing.
+		for _, p := range parts {
+			if p == "" || p == "." || p == ".." {
+				return cmd, fmt.Errorf("bad segment %q in address %q", p, rest[0])
+			}
 		}
 	}
 
 	switch {
 	case len(parts) < limits.min:
 		return cmd, fmt.Errorf("%s needs an address, e.g. `garlic %s epics @ %s`", cmd.Verb, cmd.Verb, remote)
-	case limits.max == 0 && len(parts) > 0:
-		return cmd, fmt.Errorf("%s takes no address: it always clears the whole root", cmd.Verb)
 	case len(parts) > limits.max:
 		return cmd, fmt.Errorf("address goes at most three deep: bulb/area/project")
 	}

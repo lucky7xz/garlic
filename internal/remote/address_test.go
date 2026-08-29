@@ -58,9 +58,24 @@ func TestParseCommandAccepts(t *testing.T) {
 			Command{Verb: "status", Address: Address{Bulb: "epics", Area: "fitness"}, Remote: "agent"},
 		},
 		{
-			"wipe takes no address",
+			"bare wipe means every bulb",
 			[]string{"wipe", "@", "agent"},
 			Command{Verb: "wipe", Remote: "agent"},
+		},
+		{
+			"wipe one bulb",
+			[]string{"wipe", "epics", "@", "agent"},
+			Command{Verb: "wipe", Address: Address{Bulb: "epics"}, Remote: "agent"},
+		},
+		{
+			"wipe one area",
+			[]string{"wipe", "epics/bioz", "@", "agent"},
+			Command{Verb: "wipe", Address: Address{Bulb: "epics", Area: "bioz"}, Remote: "agent"},
+		},
+		{
+			"wipe one project",
+			[]string{"wipe", "epics/bioz/mealprep", "@agent"},
+			Command{Verb: "wipe", Address: Address{Bulb: "epics", Area: "bioz", Project: "mealprep"}, Remote: "agent"},
 		},
 	}
 
@@ -87,8 +102,8 @@ func TestParseCommandRejects(t *testing.T) {
 		{"glued @ with no remote", []string{"plant", "epics", "@"}},
 		{"plant without address", []string{"plant", "@", "agent"}},
 		{"harvest without address", []string{"harvest", "@", "agent"}},
-		{"wipe with address", []string{"wipe", "epics", "@", "agent"}},
 		{"address too deep", []string{"plant", "epics/fitness/running/extra", "@", "agent"}},
+		{"wipe address too deep", []string{"wipe", "epics/bioz/mealprep/extra", "@", "agent"}},
 		{"empty address segment", []string{"plant", "epics//running", "@", "agent"}},
 		{"unknown verb", []string{"frobnicate", "epics", "@", "agent"}},
 		{"nothing at all", []string{}},
@@ -269,24 +284,21 @@ func TestSelectSkipsParkedCopies(t *testing.T) {
 	}
 }
 
-func TestParseCommandWipeAll(t *testing.T) {
-	bare, err := ParseCommand([]string{"wipe", "@", "agent"})
-	if err != nil {
-		t.Fatalf("ParseCommand failed: %v", err)
-	}
-	if bare.All {
-		t.Error("plain wipe should not be --all")
-	}
-
-	all, err := ParseCommand([]string{"wipe", "--all", "@", "agent"})
-	if err != nil {
-		t.Fatalf("ParseCommand failed: %v", err)
-	}
-	if !all.All {
-		t.Error("wipe --all should set All")
-	}
-	if all.Verb != "wipe" || all.Remote != "agent" {
-		t.Errorf("got %+v", all)
+// An address becomes a list of files to delete, so a segment that names nothing
+// on any board has to be refused rather than quietly matching nothing.
+func TestParseCommandRejectsDotSegments(t *testing.T) {
+	for _, args := range [][]string{
+		{"wipe", "..", "@", "agent"},
+		{"wipe", "epics/..", "@", "agent"},
+		{"wipe", "epics/../..", "@", "agent"},
+		{"wipe", ".", "@", "agent"},
+		{"wipe", "epics/./bioz", "@", "agent"},
+		{"plant", "epics/../scripts", "@", "agent"},
+		{"harvest", "epics/bioz/..", "@", "agent"},
+	} {
+		if _, err := ParseCommand(args); err == nil {
+			t.Errorf("ParseCommand(%v) succeeded, want error", args)
+		}
 	}
 }
 
@@ -299,7 +311,9 @@ func TestParseCommandRejectsBadFlags(t *testing.T) {
 		{"--all on harvest", []string{"harvest", "--all", "epics", "@", "agent"}},
 		{"--all on status", []string{"status", "--all", "@", "agent"}},
 		{"unknown flag", []string{"wipe", "--everything", "@", "agent"}},
-		{"wipe --all still takes no address", []string{"wipe", "--all", "epics", "@", "agent"}},
+		// --all is gone: one rule decides what a wipe takes, and it is the address.
+		{"--all on wipe", []string{"wipe", "--all", "@", "agent"}},
+		{"--all on wipe with an address", []string{"wipe", "--all", "epics", "@", "agent"}},
 	}
 
 	for _, c := range cases {

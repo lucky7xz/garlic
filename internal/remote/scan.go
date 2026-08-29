@@ -134,20 +134,29 @@ func Check(remotes []domain.Remote) (Sighting, error) {
 	return Fold(time.Now(), order, seen), errors.Join(failures...)
 }
 
-// readPlanting fetches one remote's manifest. No manifest is not a failure: it
-// is a remote that has been wiped, or never planted to, and holds nothing.
+// readPlanting fetches a remote's manifests and merges them. No manifest is not
+// a failure: it is a remote that has been wiped, or never planted to, and holds
+// nothing. Merging is safe because manifest keys name paths from the root, so no
+// two bulbs can claim the same one.
 func readPlanting(r domain.Remote) (Baseline, error) {
 	c, err := dial(r)
 	if err != nil {
 		return Baseline{}, err
 	}
 
-	base, planted, err := c.readManifest()
+	found, err := c.readManifests()
 	if err != nil {
 		return Baseline{}, err
 	}
-	if !planted {
-		return Baseline{}, nil
+
+	all := Baseline{Hashes: Manifest{}, Planted: Plantings{}}
+	for _, base := range found {
+		for rel, hash := range base.Hashes {
+			all.Hashes[rel] = hash
+		}
+		for rel, at := range base.Planted {
+			all.Planted[rel] = at
+		}
 	}
-	return base, nil
+	return all, nil
 }

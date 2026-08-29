@@ -2,11 +2,14 @@ package remote
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/lucky7xz/garlic/internal/domain"
+	"golang.org/x/term"
 )
 
 // IsCommand reports whether args start with one of the remote verbs.
@@ -40,39 +43,212 @@ func Run(cfg domain.Config, args []string) error {
 	case "status":
 		return harvest(cfg, c, cmd.Address, false)
 	case "wipe":
-		return wipe(c, cmd.All)
+		return wipe(cfg, c, cmd.Address)
 	}
 	return fmt.Errorf("unknown command %q", cmd.Verb)
 }
 
-// wipe clears garlic's own planting by default. Because a root can be shared
-// with work garlic never planted, taking everything has to be asked for.
-func wipe(c *conn, all bool) error {
-	if all {
-		if err := c.wipeAll(); err != nil {
+// wipe removes folders. An address names one -- a project, an area, a bulb --
+// and no address means every bulb. What dies is everything in that folder,
+// including work the agent left that you never harvested, because naming a path
+// is itself the act of saying what you mean.
+//
+// Anything in the root that is not a bulb is never touched: garlic did not put
+// it there. Clearing the root outright is `ssh <host> rm -rf <root>`, a command
+// with no garlic knowledge in it, so garlic does not offer it.
+func wipe(cfg domain.Config, c *conn, addr Address) error {
+	opts := cfg.GetBoardOptions()
+	if addr.Bulb != "" {
+		bulb, err := findBulb(addr.Bulb, opts)
+		if err != nil {
 			return err
 		}
-		fmt.Printf("wiped everything under %s\n", c.Describe())
-		return nil
+		opts = []domain.BoardOptions{bulb}
 	}
 
-	base, planted, err := c.readManifest()
+	remote, err := c.census()
 	if err != nil {
 		return err
 	}
-	if !planted {
-		fmt.Printf("nothing planted at %s — leaving it alone\n", c.Describe())
-		return nil
-	}
-
-	rels := sortedKeys(base.Hashes)
-	if err := c.wipePlanted(rels); err != nil {
+	found, err := c.readManifests()
+	if err != nil {
 		return err
 	}
 
-	fmt.Printf("wiped %d planted files from %s\n", len(rels), c.Describe())
-	fmt.Printf("anything garlic did not plant is still there — `garlic wipe --all @ %s` takes the rest\n", c.remote.Name)
+	doomed, loose := doomedFiles(opts, addr, remote, found)
+	if len(doomed) == 0 {
+		fmt.Printf("nothing at %s on %s — nothing to wipe\n", target(addr), c.Describe())
+		return nil
+	}
+
+	fmt.Print(renderDoomed(addr, c.Describe(), doomed, loose, opts))
+
+	// A wipe is answered by a person or not at all. Piping the answers in would
+	// let a script reproduce the accident the gates exist to prevent.
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return fmt.Errorf("wipe needs a terminal to confirm")
+	}
+	if !confirm(os.Stdout, os.Stdin, gates(addr, c.remote.Name, len(doomed))) {
+		return nil
+	}
+
+	// Files first, then the manifest, then the pruning. Both failure modes are
+	// bad but not equally: writing the manifest first would leave entries missing
+	// for files that still exist, and the next harvest would read those as new
+	// and copy them back over yours. This way a failure leaves stale entries,
+	// which blocks a re-send until you wipe again -- recoverable, and it destroys
+	// nothing. Pruning last is what lets an emptied bulb folder vanish.
+	if err := c.removeFiles(doomed); err != nil {
+		return err
+	}
+	for _, bulb := range opts {
+		if err := pruneManifest(c, bulb, addr, found[bulb.Name]); err != nil {
+			return err
+		}
+	}
+	if err := c.pruneDirs(doomed); err != nil {
+		return err
+	}
+
+	fmt.Printf("wiped %d files from %s on %s\n", len(doomed), target(addr), c.Describe())
 	return nil
+}
+
+// doomedFiles is everything under the address, and which of it the manifest
+// never knew about -- the agent's work, never harvested. Both lists are returned
+// rather than one list and a count, so the summary can name the files it is
+// warning you about instead of the first few of everything.
+//
+// The census is raw, so an ignore list shields nothing: wiping a folder takes
+// what is in it.
+func doomedFiles(opts []domain.BoardOptions, addr Address, remote Census, found map[string]Baseline) (doomed, loose []string) {
+	for _, bulb := range opts {
+		here := addr
+		if here.Bulb == "" {
+			here.Bulb = bulb.Name
+		}
+
+		for rel := range remote {
+			if !inScope(rel, here, bulb.Extension, bulb.WholeFolder) {
+				continue
+			}
+			doomed = append(doomed, rel)
+			if _, ok := found[bulb.Name].Hashes[rel]; !ok {
+				loose = append(loose, rel)
+			}
+		}
+	}
+	sort.Strings(doomed)
+	sort.Strings(loose)
+	return doomed, loose
+}
+
+// pruneManifest drops the wiped entries from a bulb's baseline, from both the
+// hashes and the planting times. Leave them and Classify reads planted + local +
+// no-remote as RemoteGone, which PlantPlan files under Gone -- so the replant
+// would refuse to re-send, and the wipe would silently break the one workflow it
+// exists for.
+//
+// inScope, not scope: scope also applies the ignore list, so adding `dist` to a
+// bulb after planting would strand its entries where nothing could remove them.
+func pruneManifest(c *conn, bulb domain.BoardOptions, addr Address, base Baseline) error {
+	here := addr
+	if here.Bulb == "" {
+		here.Bulb = bulb.Name
+	}
+
+	kept := Baseline{Hashes: Manifest{}, Planted: Plantings{}}
+	for rel, hash := range base.Hashes {
+		if inScope(rel, here, bulb.Extension, bulb.WholeFolder) {
+			continue
+		}
+		kept.Hashes[rel] = hash
+		if at, ok := base.Planted[rel]; ok {
+			kept.Planted[rel] = at
+		}
+	}
+
+	// An emptied manifest is deleted rather than written blank, so that "no
+	// manifest" keeps meaning "nothing was planted here".
+	if len(kept.Hashes) == 0 {
+		return c.dropManifest(bulb.Name)
+	}
+	return c.writeManifest(bulb.Name, kept)
+}
+
+// renderDoomed is the summary the gates are answered against. It splits the
+// count because both the census and the manifest are in hand: seeing how much
+// of this was never harvested is the last chance to notice you are about to
+// throw away work.
+func renderDoomed(addr Address, where string, doomed, loose []string, opts []domain.BoardOptions) string {
+	const listed = 5
+
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "wipe %s @ %s\n", target(addr), where)
+	fmt.Fprintf(&b, "  %d files · %d you planted\n", len(doomed), len(doomed)-len(loose))
+
+	if len(loose) > 0 {
+		fmt.Fprintf(&b, "  %d never harvested:\n", len(loose))
+		for _, rel := range loose[:min(listed, len(loose))] {
+			fmt.Fprintf(&b, "    %s\n", rel)
+		}
+		if rest := len(loose) - listed; rest > 0 {
+			fmt.Fprintf(&b, "    ... and %d more\n", rest)
+		}
+	}
+
+	if names := belowNames(addr, doomed, opts); len(names) > 0 {
+		fmt.Fprintf(&b, "  %s: %s\n", belowLabel(addr), strings.Join(names, ", "))
+	}
+	return b.String()
+}
+
+// belowNames lists what sits one level under the address -- the bulbs, areas or
+// projects about to go. Seeing six areas when you wanted one is what reveals the
+// mistake the gates exist to catch.
+func belowNames(addr Address, doomed []string, opts []domain.BoardOptions) []string {
+	if addr.Project != "" {
+		return nil
+	}
+	depth := map[bool]int{true: 0, false: 1}[addr.Bulb == ""]
+	if addr.Area != "" {
+		depth = 2
+	}
+
+	seen := map[string]bool{}
+	var names []string
+	for _, rel := range doomed {
+		parts := strings.Split(rel, "/")
+		if len(parts) <= depth {
+			continue
+		}
+		name := strings.TrimSuffix(parts[depth], ".clove.md")
+		name = strings.TrimSuffix(name, ".md")
+		if !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func belowLabel(addr Address) string {
+	switch {
+	case addr.Area != "":
+		return "projects"
+	case addr.Bulb != "":
+		return "areas"
+	}
+	return "bulbs"
+}
+
+func target(addr Address) string {
+	if addr.Bulb == "" {
+		return "every bulb"
+	}
+	return addr.String()
 }
 
 // plant tops the remote up: it sends what the agent has not touched, and says
@@ -94,10 +270,11 @@ func plant(cfg domain.Config, c *conn, addr Address) error {
 	}
 
 	// A first plant has no baseline yet; it is the thing creating one.
-	base, _, err := c.readManifest()
+	found, err := c.readManifests()
 	if err != nil {
 		return err
 	}
+	base := found[bulb.Name]
 	if base.Hashes == nil {
 		base.Hashes = Manifest{}
 	}
@@ -128,7 +305,7 @@ func plant(cfg domain.Config, c *conn, addr Address) error {
 		base.Hashes[rel] = local[rel]
 		base.Planted[rel] = now
 	}
-	if err := c.writeManifest(base); err != nil {
+	if err := c.writeManifest(bulb.Name, base); err != nil {
 		return err
 	}
 
@@ -139,11 +316,11 @@ func plant(cfg domain.Config, c *conn, addr Address) error {
 // harvest collects what the agent produced. With apply false it is `status`:
 // the same reckoning, printed and not acted on.
 func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
-	base, planted, err := c.readManifest()
+	found, err := c.readManifests()
 	if err != nil {
 		return err
 	}
-	if !planted {
+	if len(found) == 0 {
 		return fmt.Errorf("no manifest at %s — nothing was planted here, or it was wiped", c.Describe())
 	}
 
@@ -162,11 +339,14 @@ func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
 	}
 
 	for _, bulb := range opts {
-		// With no address, each bulb is reckoned against its own slice of the root.
+		// With no address, each bulb is reckoned against its own slice of the
+		// root. A bulb with no manifest needs no special case: its baseline is
+		// empty, so nothing there was planted and everything reads as left alone.
 		here := addr
 		if here.Bulb == "" {
 			here.Bulb = bulb.Name
 		}
+		base := found[bulb.Name]
 
 		all, err := bulbCensus(bulb)
 		if err != nil {
@@ -194,12 +374,11 @@ func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
 			for _, rel := range append(p.Take, p.Park...) {
 				base.Hashes[rel] = taken[rel]
 			}
+			if err := c.writeManifest(bulb.Name, base); err != nil {
+				return err
+			}
 		}
 		report(verbLabel(apply), here.String(), c.Describe(), p)
-	}
-
-	if apply {
-		return c.writeManifest(base)
 	}
 	return nil
 }

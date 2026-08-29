@@ -153,62 +153,71 @@ func (c *conn) census() (Census, error) {
 	return parseSums(out)
 }
 
-// readManifest reports whether the remote has a baseline at all. Without one,
-// nothing can be said about who moved what.
-func (c *conn) readManifest() (Baseline, bool, error) {
-	out, err := c.run(fmt.Sprintf("cat %s 2>/dev/null || true", quote(c.manifestPath())), nil)
+// readManifests fetches every bulb's baseline in one round trip. Each manifest
+// lives inside the bulb it describes, so the loop walks the root's directories
+// and marks each file with the bulb it came from.
+func (c *conn) readManifests() (map[string]Baseline, error) {
+	script := fmt.Sprintf(
+		`cd %s 2>/dev/null || exit 0; for d in */; do f="$d"%s; `+
+			`[ -f "$f" ] && { printf '%s%%s\n' "${d%%/}"; cat "$f"; }; done; exit 0`,
+		quote(c.root), quote(ManifestName), manifestMarker)
+
+	out, err := c.run(script, nil)
 	if err != nil {
-		return Baseline{}, false, err
-	}
-	if len(bytes.TrimSpace(out)) == 0 {
-		return Baseline{}, false, nil
+		return nil, err
 	}
 
-	b, err := DecodeManifest(out)
+	found, err := parseManifests(out)
 	if err != nil {
-		return Baseline{}, false, fmt.Errorf("manifest at %s is unreadable: %w", c.Describe(), err)
+		return nil, fmt.Errorf("at %s: %w", c.Describe(), err)
 	}
-	return b, true, nil
+	return found, nil
 }
 
-func (c *conn) writeManifest(b Baseline) error {
+func (c *conn) writeManifest(bulb string, b Baseline) error {
 	data, err := b.Encode()
 	if err != nil {
 		return err
 	}
-	script := fmt.Sprintf("mkdir -p %s && cat > %s", quote(c.root), quote(c.manifestPath()))
+	dir := path.Join(c.root, bulb)
+	script := fmt.Sprintf("mkdir -p %s && cat > %s", quote(dir), quote(c.manifestPath(bulb)))
 	_, err = c.run(script, bytes.NewReader(data))
 	return err
 }
 
-func (c *conn) manifestPath() string { return path.Join(c.root, ManifestName) }
-
-// wipeAll clears the root outright, including anything garlic never planted.
-func (c *conn) wipeAll() error {
-	_, err := c.run(fmt.Sprintf("rm -rf %s", quote(c.root)), nil)
+// dropManifest removes a bulb's manifest outright, which is what an emptied one
+// means: no manifest keeps standing for "nothing was planted here".
+func (c *conn) dropManifest(bulb string) error {
+	_, err := c.run("rm -f "+quote(c.manifestPath(bulb)), nil)
 	return err
 }
 
-// wipePlanted removes exactly what the manifest records and then the manifest
-// itself, leaving whatever else lives in the root untouched. Directories are
-// pruned with `rmdir -p`, which fails on a non-empty directory — so only the
-// ones our own deletions just emptied can go.
-func (c *conn) wipePlanted(rels []string) error {
-	if len(rels) > 0 {
-		if _, err := c.run("cd "+quote(c.root)+" && xargs -0 -r rm -f --", nulList(rels)); err != nil {
-			return err
-		}
+func (c *conn) manifestPath(bulb string) string {
+	return path.Join(c.root, bulb, ManifestName)
+}
 
-		dirs := parentDirs(rels)
-		if len(dirs) > 0 {
-			prune := "cd " + quote(c.root) + " && xargs -0 -r rmdir -p -- 2>/dev/null || true"
-			if _, err := c.run(prune, nulList(dirs)); err != nil {
-				return err
-			}
-		}
+// removeFiles deletes exactly the paths it is given. They come from a census, so
+// no path is ever assembled from an argument and `rm -rf` is never needed --
+// the whole path-escape hazard simply does not arise.
+func (c *conn) removeFiles(rels []string) error {
+	if len(rels) == 0 {
+		return nil
 	}
+	_, err := c.run("cd "+quote(c.root)+" && xargs -0 -r rm -f --", nulList(rels))
+	return err
+}
 
-	_, err := c.run("rm -f "+quote(c.manifestPath()), nil)
+// pruneDirs removes the directories those deletions emptied, and their parents.
+// `rmdir -p` fails on a non-empty directory, so only what we actually emptied
+// can go; paths are relative to a `cd` into the root, so pruning can never walk
+// above it.
+func (c *conn) pruneDirs(rels []string) error {
+	dirs := parentDirs(rels)
+	if len(dirs) == 0 {
+		return nil
+	}
+	prune := "cd " + quote(c.root) + " && xargs -0 -r rmdir -p -- 2>/dev/null || true"
+	_, err := c.run(prune, nulList(dirs))
 	return err
 }
 
