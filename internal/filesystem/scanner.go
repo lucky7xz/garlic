@@ -32,12 +32,12 @@ func ScanBoard(opts domain.BoardOptions) domain.Board {
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
-			continue 
+			continue
 		}
 
 		category := entry.Name()
 		catPath := filepath.Join(opts.Path, category)
-		
+
 		files, err := os.ReadDir(catPath)
 		if err != nil {
 			continue
@@ -49,25 +49,25 @@ func ScanBoard(opts domain.BoardOptions) domain.Board {
 			if file.IsDir() {
 				continue
 			}
-			
+
 			if strings.HasSuffix(file.Name(), opts.Extension) {
 				filePath := filepath.Join(catPath, file.Name())
 				tags := GetTags(filePath)
 				tag := tags.Status
-				
+
 				if tag != "" && isAllowedStatus(tag, opts.Statuses) {
 					p := domain.Project{
-						Name:      file.Name(),
-						Path:      filePath,
-						Category:  category,
-						Status:    tag,
+						Name:     file.Name(),
+						Path:     filePath,
+						Category: category,
+						Status:   tag,
 					}
-					
+
 					targetGrid := board.Grid
 					if tags.Hidden {
 						targetGrid = board.HiddenGrid
 					}
-					
+
 					if _, ok := targetGrid[tag][category]; !ok {
 						targetGrid[tag][category] = []domain.Project{}
 					}
@@ -79,7 +79,7 @@ func ScanBoard(opts domain.BoardOptions) domain.Board {
 
 		if matchedFilesCount > 0 || opts.ShowEmptyCategories {
 			board.CategoryOrder = append(board.CategoryOrder, category)
-			
+
 			for _, status := range opts.Statuses {
 				if board.Grid[status] == nil {
 					board.Grid[status] = make(map[string][]domain.Project)
@@ -152,13 +152,13 @@ func ToggleHiddenMarker(filepath string) {
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "#garlic-hide" {
 			found = true
-			continue 
+			continue
 		}
 		newLines = append(newLines, line)
 	}
 	if !found {
 		newLines = append([]string{"#garlic-hide"}, newLines...)
 	}
-	
+
 	os.WriteFile(filepath, []byte(strings.Join(newLines, "\n")), 0644)
 }

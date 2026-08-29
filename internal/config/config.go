@@ -72,7 +72,7 @@ func LoadConfig() (domain.Config, error) {
 	if err != nil {
 		log.Fatalf("could not get current user: %v", err)
 	}
-	
+
 	expandPath := func(p string) string {
 		if strings.HasPrefix(p, "~/") {
 			return filepath.Join(usr.HomeDir, p[2:])

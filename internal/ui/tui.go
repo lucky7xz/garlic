@@ -962,7 +962,7 @@ func (m Model) View() string {
 		footerStr = dangerStyle.Render(fmt.Sprintf("WARNING! Type 'delete' to PERMANENTLY ERASE %s [%s]", m.ActionTarget.Name, m.DelInput)) + "\n"
 	} else if m.State == stateInsertTyping {
 		cat := currentBoard.CategoryOrder[m.GridCursor.Category]
-		insertStyle := m.TitleStyle.Copy().Align(lipgloss.Center)
+		insertStyle := m.TitleStyle.Align(lipgloss.Center)
 		footerStr = insertStyle.Render(fmt.Sprintf("CREATE IN %s: %s_", cat, m.InsertInput)) + "\n"
 	} else if m.State == stateInsertConfirm {
 		newFileName := strings.TrimSpace(m.InsertInput)
@@ -983,7 +983,7 @@ func (m Model) View() string {
 		newStatus := currentBoard.Statuses[m.GridCursor.Status]
 		footerStr = warningStyle.Render(fmt.Sprintf("MOVING %s TO %s... (enter: drop • esc: cancel)", m.ActionTarget.Name, newStatus)) + "\n"
 	} else if m.State == stateRenaming {
-		insertStyle := m.TitleStyle.Copy().Align(lipgloss.Center)
+		insertStyle := m.TitleStyle.Align(lipgloss.Center)
 		footerStr = insertStyle.Render(fmt.Sprintf("RENAME: %s_", m.RenameInput)) + "\n"
 	} else {
 		footerStr = m.idleFooter() + "\n"

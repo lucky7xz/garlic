@@ -13,16 +13,16 @@ import (
 func UpdateProjectStatus(path, newStatus string) error {
 	// Basic path sanitization
 	path = filepath.Clean(path)
-	
+
 	file, err := os.Open(path)
 	if err != nil {
 		return err
 	}
-	
+
 	var lines []string
 	reStatus := regexp.MustCompile(`#statustag-\s*(\w+)`)
 	scanner := bufio.NewScanner(file)
-	
+
 	found := false
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -48,7 +48,7 @@ func UpdateProjectStatus(path, newStatus string) error {
 // CreateProject safely creates a new project file if it doesn't already exist
 func CreateProject(path, status string) error {
 	path = filepath.Clean(path)
-	
+
 	// Ensure directory exists
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {

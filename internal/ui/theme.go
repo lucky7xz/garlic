@@ -35,7 +35,7 @@ func ApplyTheme(theme domain.Theme, m *Model) {
 		BorderForeground(lipgloss.Color(theme.Comment)).
 		Padding(0, 0)
 
-	m.SelectedCellStyle = m.CellStyle.Copy().
+	m.SelectedCellStyle = m.CellStyle.
 		Foreground(lipgloss.Color(theme.Primary)).
 		BorderForeground(lipgloss.Color(theme.Primary)).
 		Bold(true)
@@ -48,7 +48,7 @@ func ApplyTheme(theme domain.Theme, m *Model) {
 		Foreground(lipgloss.Color(theme.Warning)).
 		Bold(true)
 
-	m.EmptyCellStyle = m.CellStyle.Copy().Foreground(lipgloss.Color(theme.Comment))
+	m.EmptyCellStyle = m.CellStyle.Foreground(lipgloss.Color(theme.Comment))
 
 	m.HelpStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(theme.Comment)).

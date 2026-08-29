@@ -43,7 +43,7 @@ func WatchBoards(opts []domain.BoardOptions) (<-chan []domain.Board, func(), err
 
 	go func() {
 		defer watcher.Close()
-		
+
 		var timer *time.Timer
 		const debounceDuration = 150 * time.Millisecond
 
@@ -53,7 +53,7 @@ func WatchBoards(opts []domain.BoardOptions) (<-chan []domain.Board, func(), err
 				if !ok {
 					return
 				}
-				
+
 				// Minimal: we only care about project files or category folders
 				// If a new directory is created, watch it too
 				if event.Has(fsnotify.Create) {

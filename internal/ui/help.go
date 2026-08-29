@@ -62,7 +62,7 @@ func (m Model) helpMenuCols(numCols int) string {
 	itemsPerCol := (len(entries) + numCols - 1) / numCols
 
 	// Simple key style without border
-	keyStyle := m.HeaderStyle.Copy().UnsetBorderStyle().Width(maxKeyLen + 1)
+	keyStyle := m.HeaderStyle.UnsetBorderStyle().Width(maxKeyLen + 1)
 
 	for i := 0; i < numCols; i++ {
 		start := i * itemsPerCol

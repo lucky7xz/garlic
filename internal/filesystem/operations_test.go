@@ -65,7 +65,7 @@ func TestRenameProjectCollision(t *testing.T) {
 
 	oldPath := filepath.Join(tmpDir, "old.md")
 	existingPath := filepath.Join(tmpDir, "exists.md")
-	
+
 	_ = os.WriteFile(oldPath, []byte(""), 0644)
 	_ = os.WriteFile(existingPath, []byte(""), 0644)
 
