@@ -159,7 +159,20 @@ func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
 			here.Bulb = bulb.Name
 		}
 
-		p, taken, err := reckon(c, bulb, here, manifest, remote)
+		all, err := bulbCensus(bulb)
+		if err != nil {
+			return err
+		}
+
+		// Only an address the user actually typed can be a typo. Without one,
+		// each bulb is simply reckoned against its own slice of the root, and
+		// having nothing there is an ordinary answer.
+		if addr.Area != "" && !addressNames(here, bulb, all, Census(manifest), remote) {
+			return fmt.Errorf("nothing at %q — not on the board here, not in the manifest, not on %s",
+				here.String(), c.Describe())
+		}
+
+		p, taken, err := reckon(c, bulb, here, manifest, remote, all)
 		if err != nil {
 			return err
 		}
@@ -185,17 +198,18 @@ func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
 	return nil
 }
 
-// reckon builds the three states for one bulb and reads them.
-func reckon(c *conn, bulb domain.BoardOptions, addr Address, manifest Manifest, remote Census) (Plan, Census, error) {
+// bulbCensus is everything a bulb holds locally, hashed. The caller keeps it so
+// that validating the address and reckoning against it share one walk.
+func bulbCensus(bulb domain.BoardOptions) (Census, error) {
 	files, err := BulbFiles(bulb)
 	if err != nil {
-		return Plan{}, nil, err
+		return nil, err
 	}
-	all, err := localCensus(files)
-	if err != nil {
-		return Plan{}, nil, err
-	}
+	return localCensus(files)
+}
 
+// reckon builds the three states for one bulb and reads them.
+func reckon(c *conn, bulb domain.BoardOptions, addr Address, manifest Manifest, remote, all Census) (Plan, Census, error) {
 	ext := bulb.Extension
 	local := scope(all, addr, bulb)
 	planted := Manifest(scope(Census(manifest), addr, bulb))
@@ -239,6 +253,23 @@ func collect(c *conn, bulb domain.BoardOptions, p Plan) error {
 		}
 	}
 	return nil
+}
+
+// addressNames reports whether an address matches anything at all, in any of
+// the three states harvest already holds.
+//
+// Plant can validate against the board here, because it can only ever send what
+// is here. Harvest cannot: the projects most worth collecting are the ones the
+// agent created, which exist only on the remote. But an address that names
+// nothing in any of the three is a typo, and letting it through would print
+// "nothing to do" -- a clean harvest and a mistyped one reading identically.
+func addressNames(addr Address, bulb domain.BoardOptions, states ...Census) bool {
+	for _, state := range states {
+		if len(scope(state, addr, bulb)) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func scope(census Census, addr Address, bulb domain.BoardOptions) Census {
