@@ -216,20 +216,26 @@ ignore = ["dist", "node_modules", "target", ".venv"]
 ### 🌱 What is planted where
 
 Press `c` on the board. Garlic asks every configured remote what it is holding
-and marks what is out there:
+and marks what is out there. Columns are areas, cells are the projects in them:
+
+| fitness | learning 🌱 |
+|---|---|
+| running 📎 🌱 | golang |
+| swimming | |
+
+`learning` went whole, so the **column** carries the mark and the project inside
+it stays bare. In `fitness` only `running` was sent, so the **project** carries
+it. The mark always shows what you sent, at the size you sent it.
+
+Put the cursor on a marked project and the footer names the machine:
 
 ```
-│bioz         ││decks🌱      │   ← one project sent / the whole area sent
-│mealprep🌱   ││revise       │
-│sleeplog     ││release      │
-
-🌱 planted on agent 3d ago • checked 14:20   ← cursor on mealprep
+🌱 planted on agent 3d ago • checked 14:20   ← cursor on running
+?: help • q: quit • 🌱 checked 14:20         ← cursor anywhere else
 ```
 
-The mark shows what you sent, at the size you sent it: plant one project and the
-project is marked, plant the area and the column is marked instead. The two times
-answer different questions — how long the work has been over there, and how stale
-this picture of it is.
+The two times answer different questions — how long the work has been over there,
+and how stale this picture of it is.
 
 Nothing is cached. An unmarked board means you have not asked yet, which is why
 the footer stamps the time once you have.
@@ -282,7 +288,7 @@ An address means the folder dies whole — including work the agent left that yo
 never harvested. No address means every bulb. Anything in the root that is not a
 bulb is never touched, so a `root` shared with the remote's own work survives.
 
-Because typing `epics` when you meant `epics/bioz` is the accident worth
+Because typing `epics` when you meant `epics/fitness` is the accident worth
 preventing, wipe asks in proportion to what it would take: a project wants its
 name typed, an area a confirmation and its name, a bulb the name and the file
 count, the whole remote four answers. The count comes from the summary printed

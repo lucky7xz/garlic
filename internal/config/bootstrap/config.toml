@@ -77,7 +77,7 @@ statuses = ["inProgress", "onHold"]
 # │   garlic plant   scripts/drako         @ agent
 # │   garlic harvest epics/fitness/running @ agent
 # │   garlic status                        @ agent
-# │   garlic wipe    epics/bioz/mealprep   @ agent   (reset one project)
+# │   garlic wipe    epics/fitness/running @ agent   (reset one project)
 # │   garlic wipe                          @ agent   (every bulb)
 # │
 # │ Press `c` on the board to see what is planted where. Nothing is cached:
