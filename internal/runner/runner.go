@@ -113,6 +113,30 @@ func Run() {
 		case os.Args[1] == "init":
 			initDemo()
 			return
+		case os.Args[1] == "__complete":
+			// Completion reads only this machine, which is also the only thing
+			// that can be planted -- no ssh runs until you press enter. A broken
+			// config offers nothing rather than shouting into the prompt.
+			cfg, err := config.LoadConfig()
+			if err != nil {
+				return
+			}
+			for _, candidate := range remote.Complete(cfg, os.Args[2:]) {
+				fmt.Println(candidate)
+			}
+			return
+		case os.Args[1] == "completion":
+			shell := ""
+			if len(os.Args) > 2 {
+				shell = os.Args[2]
+			}
+			script, err := remote.CompletionScript(shell)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "garlic: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Print(script)
+			return
 		case remote.IsCommand(os.Args[1]):
 			cfg, err := config.LoadConfig()
 			if err != nil {

@@ -181,6 +181,17 @@ garlic wipe    epics/fitness/running @ agent   # reset one project
 garlic wipe                          @ agent   # every bulb
 ```
 
+Tab completion works on all of them. Add this to your `~/.bashrc`:
+
+```bash
+eval "$(garlic completion bash)"
+```
+
+Then `garlic plant ep<TAB>` fills in `epics/`, and tabbing on walks the areas and
+projects. It reads only this machine — which is the only thing that can be
+planted anyway — so tab never opens an ssh connection. Nothing reaches the remote
+until you press enter.
+
 Every command reads *verb, address, at, machine*. The address is the board's own
 coordinates — `bulb`, `bulb/area`, or `bulb/area/project`. `@ <remote>` is always
 required, so `garlic plant epics` on its own can never reach another machine.
