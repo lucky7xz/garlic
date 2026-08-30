@@ -156,7 +156,7 @@ func TestRenderDoomed(t *testing.T) {
 	loose := []string{"epics/bioz/mealprep/scratch.md", "epics/work/report.md"}
 
 	got := renderDoomed(Address{Bulb: "epics"}, "berta:/home/berta/shara",
-		doomed, loose, []domain.BoardOptions{epicsBulb()})
+		doomed, loose)
 
 	for _, want := range []string{"4 files", "2 you planted", "2 never harvested", "areas: bioz, work"} {
 		if !strings.Contains(got, want) {
@@ -187,8 +187,7 @@ func TestRenderDoomedOverflowCountsTheRightThing(t *testing.T) {
 	}
 	loose = doomed[:6]
 
-	got := renderDoomed(Address{Bulb: "epics"}, "host", doomed, loose,
-		[]domain.BoardOptions{epicsBulb()})
+	got := renderDoomed(Address{Bulb: "epics"}, "host", doomed, loose)
 
 	if !strings.Contains(got, "... and 1 more") {
 		t.Errorf("want one unlisted file reported:\n%s", got)

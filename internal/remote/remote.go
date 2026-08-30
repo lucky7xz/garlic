@@ -92,7 +92,7 @@ func wipe(cfg domain.Config, c *conn, addr Address) error {
 		return nil
 	}
 
-	fmt.Print(renderDoomed(addr, c.Describe(), doomed, loose, opts))
+	fmt.Print(renderDoomed(addr, c.Describe(), doomed, loose))
 
 	// A wipe is answered by a person or not at all. Piping the answers in would
 	// let a script reproduce the accident the gates exist to prevent.
@@ -192,7 +192,7 @@ func pruneManifest(c *conn, bulb domain.BoardOptions, addr Address, base Baselin
 // count because both the census and the manifest are in hand: seeing how much
 // of this was never harvested is the last chance to notice you are about to
 // throw away work.
-func renderDoomed(addr Address, where string, doomed, loose []string, opts []domain.BoardOptions) string {
+func renderDoomed(addr Address, where string, doomed, loose []string) string {
 	const listed = 5
 
 	var b strings.Builder
@@ -210,7 +210,7 @@ func renderDoomed(addr Address, where string, doomed, loose []string, opts []dom
 		}
 	}
 
-	if names := belowNames(addr, doomed, opts); len(names) > 0 {
+	if names := belowNames(addr, doomed); len(names) > 0 {
 		fmt.Fprintf(&b, "  %s: %s\n", belowLabel(addr), strings.Join(names, ", "))
 	}
 	return b.String()
@@ -219,7 +219,7 @@ func renderDoomed(addr Address, where string, doomed, loose []string, opts []dom
 // belowNames lists what sits one level under the address -- the bulbs, areas or
 // projects about to go. Seeing six areas when you wanted one is what reveals the
 // mistake the gates exist to catch.
-func belowNames(addr Address, doomed []string, opts []domain.BoardOptions) []string {
+func belowNames(addr Address, doomed []string) []string {
 	if addr.Project != "" {
 		return nil
 	}
@@ -272,6 +272,13 @@ func plant(cfg domain.Config, c *conn, addr Address, withGit bool) error {
 		return err
 	}
 
+	// A repository lives in one directory, and the branch garlic starts has to
+	// be started inside it. A bulb is a shelf of folders, not a repository, so
+	// there is nothing there to check out.
+	if withGit && addr.Area == "" {
+		return fmt.Errorf("--git needs the folder holding the repository, e.g. %s/<folder>", addr.Bulb)
+	}
+
 	files, err := Select(addr, opts, withGit)
 	if err != nil {
 		return err
@@ -290,6 +297,13 @@ func plant(cfg domain.Config, c *conn, addr Address, withGit bool) error {
 		}
 	}
 	files = kept
+
+	// Nothing to send means nothing to start a branch in. Saying so beats
+	// pushing nothing and then failing to cd into a directory that was never
+	// created.
+	if withGit && len(files) == 0 {
+		return fmt.Errorf("%s has nothing to send", addr.String())
+	}
 
 	local, err := localCensus(files)
 	if err != nil {
@@ -408,17 +422,22 @@ func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
 				here.String(), c.Describe())
 		}
 
-		// A repository is git's to move. Copying its working tree home would
-		// flatten every commit into one and, worse, race with the merge you
-		// would then have to do -- the same change arriving twice.
-		if here.Area != "" && repoAt(remote, here, bulb) {
-			if err := harvestRepo(c, bulb, here, apply); err != nil {
+		// A repository is git's to move: copying its working tree home would
+		// flatten every commit into one and then race with the merge you would
+		// have to do anyway. Decided per folder, because a bulb is a shelf --
+		// one folder can be a repo and its neighbour plain files.
+		repos := repoAreas(remote, here, bulb)
+		skip := map[string]bool{}
+		for _, area := range repos {
+			at := here
+			at.Area = area
+			if err := harvestRepo(c, bulb, at, apply); err != nil {
 				return err
 			}
-			continue
+			skip[bulb.Name+"/"+area+"/"] = true
 		}
 
-		p, taken := reckon(bulb, here, base.Hashes, remote, all)
+		p, taken := reckon(bulb, here, base.Hashes, visible(remote, skip), visible(all, skip))
 
 		// Harvest compares hidden projects like any other -- it has to, or it
 		// could never ask whether you still want their changes.
@@ -466,7 +485,11 @@ func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
 				return err
 			}
 		}
-		report(verbLabel(apply), here.String(), c.Describe(), p)
+		// A bulb of nothing but repositories has already said everything it
+		// has to say; an empty file report under it would be noise.
+		if len(repos) == 0 || !p.Empty() {
+			report(verbLabel(apply), here.String(), c.Describe(), p)
+		}
 	}
 	return nil
 }

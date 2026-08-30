@@ -311,7 +311,7 @@ func isParked(name string) bool {
 // rsync merges without deleting, so a collected refs/ or index landing over your
 // objects would leave branch pointers and worktree disagreeing.
 func ignored(rel string, patterns []string, keepGit bool) bool {
-	for _, segment := range strings.Split(rel, "/") {
+	for segment := range strings.SplitSeq(rel, "/") {
 		if segment == ".git" && !keepGit {
 			return true
 		}
@@ -325,25 +325,73 @@ func ignored(rel string, patterns []string, keepGit bool) bool {
 	return false
 }
 
-// hiddenUnder is every path belonging to a project you have hidden: the project
-// file, and everything in its resource folder.
+// hiddenUnder is every path belonging to a project you have hidden.
 //
 // #garlic-hide is the board's one way of saying "not in play", and plant is the
 // only verb that honours it -- harvest has to keep comparing hidden projects or
 // it could never ask whether you still want their changes.
+//
+// What counts as "a project" is the bulb kind's answer, not a file's. On a full
+// bulb it is a file plus its resource folder. On a semi bulb it is the folder,
+// so hiding takes effect only once every clove in that folder is hidden -- one
+// visible clove still puts the folder in play, and it then travels whole,
+// hidden clove included. Cherry-picking a file out of a whole-folder transfer
+// would contradict the rule the bulb kind exists for.
 func hiddenUnder(bulb domain.BoardOptions) map[string]bool {
 	board := filesystem.ScanBoard(bulb)
-
 	out := map[string]bool{}
+
+	// A semi bulb parks the whole folder once nothing visible is left in it.
+	// One visible clove keeps the folder travelling; the hidden clove beside it
+	// still stays home, because #garlic-hide is about the file it sits in.
+	if bulb.WholeFolder {
+		for _, category := range hiddenCategories(board) {
+			out[bulb.Name+"/"+category+"/"] = true
+		}
+	}
+
 	for _, byCategory := range board.HiddenGrid {
 		for _, projects := range byCategory {
 			for _, p := range projects {
 				rel := Rel(bulb, p.Path)
 				out[rel] = true
-				out[strings.TrimSuffix(rel, bulb.Extension)+"/"] = true
+
+				// Only a full bulb has a same-named resource folder. On a semi
+				// bulb that path would be an ordinary directory inside the
+				// project, and excluding it would be a coincidence, not a rule.
+				if !bulb.WholeFolder {
+					out[strings.TrimSuffix(rel, bulb.Extension)+"/"] = true
+				}
 			}
 		}
 	}
+	return out
+}
+
+// hiddenCategories names the semi-bulb folders with nothing visible left in
+// them: at least one hidden clove, and no clove still on the board.
+func hiddenCategories(board domain.Board) []string {
+	visible := map[string]bool{}
+	for _, byCategory := range board.Grid {
+		for category, projects := range byCategory {
+			if len(projects) > 0 {
+				visible[category] = true
+			}
+		}
+	}
+
+	seen := map[string]bool{}
+	var out []string
+	for _, byCategory := range board.HiddenGrid {
+		for category, projects := range byCategory {
+			if len(projects) == 0 || visible[category] || seen[category] {
+				continue
+			}
+			seen[category] = true
+			out = append(out, category)
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 

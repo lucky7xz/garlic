@@ -123,3 +123,57 @@ func TestRepoAt(t *testing.T) {
 		t.Error("found a repository in a census with no .git at all")
 	}
 }
+
+// A bulb is a shelf: one folder can be a repository and its neighbour plain
+// files, so harvest decides per folder. Deciding once for the whole address is
+// what made `harvest scripts` file-copy repos it should have fetched.
+func TestRepoAreas(t *testing.T) {
+	semi := domain.BoardOptions{Name: "scripts", Extension: ".clove.md", WholeFolder: true}
+	census := Census{
+		"scripts/garlic/main.go":        "A",
+		"scripts/garlic/.git/HEAD":      "B",
+		"scripts/drako/.git/refs/heads": "C",
+		"scripts/notes/todo.clove.md":   "D",
+	}
+
+	got := repoAreas(census, Address{Bulb: "scripts"}, semi)
+	if len(got) != 2 || got[0] != "drako" || got[1] != "garlic" {
+		t.Errorf("repoAreas = %v, want [drako garlic] at bulb level", got)
+	}
+
+	// Addressed at one folder, only that one is in scope.
+	got = repoAreas(census, Address{Bulb: "scripts", Area: "garlic"}, semi)
+	if len(got) != 1 || got[0] != "garlic" {
+		t.Errorf("repoAreas(scripts/garlic) = %v, want [garlic]", got)
+	}
+
+	// A folder with no repository is never named.
+	got = repoAreas(census, Address{Bulb: "scripts", Area: "notes"}, semi)
+	if len(got) != 0 {
+		t.Errorf("repoAreas(scripts/notes) = %v, want none", got)
+	}
+
+	// A bulb whose .git sits at the bulb root is not a folder repo.
+	got = repoAreas(Census{"scripts/.git/HEAD": "A"}, Address{Bulb: "scripts"}, semi)
+	if len(got) != 0 {
+		t.Errorf("repoAreas = %v, want none: a bulb is not a repository", got)
+	}
+}
+
+// The repo folders drop out of the file comparison, so their working trees are
+// never copied home alongside the commits.
+func TestRepoAreasAreExcludedFromTheFileComparison(t *testing.T) {
+	census := Census{
+		"scripts/garlic/main.go":      "A",
+		"scripts/notes/todo.clove.md": "B",
+	}
+	skip := map[string]bool{"scripts/garlic/": true}
+
+	got := visible(census, skip)
+	if _, ok := got["scripts/garlic/main.go"]; ok {
+		t.Error("a repository's working tree would be copied home as well as fetched")
+	}
+	if _, ok := got["scripts/notes/todo.clove.md"]; !ok {
+		t.Error("a plain folder beside a repository was dropped too")
+	}
+}

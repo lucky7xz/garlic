@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/lucky7xz/garlic/internal/domain"
@@ -37,6 +38,33 @@ func repoAt(census Census, addr Address, bulb domain.BoardOptions) bool {
 		}
 	}
 	return false
+}
+
+// repoAreas names the folders under an address that hold a repository. A bulb is
+// a shelf: one folder can be a repo and its neighbour plain files, so harvest
+// has to decide per folder rather than once for the whole address.
+func repoAreas(census Census, addr Address, bulb domain.BoardOptions) []string {
+	seen := map[string]bool{}
+	var out []string
+
+	for rel := range census {
+		if !inScope(rel, addr, bulb.Extension, bulb.WholeFolder) {
+			continue
+		}
+		parts := strings.Split(rel, "/")
+		if len(parts) < 3 || seen[parts[1]] {
+			continue
+		}
+		for _, segment := range parts[2:] {
+			if segment == ".git" {
+				seen[parts[1]] = true
+				out = append(out, parts[1])
+				break
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // gitDir is the address as a path on the remote.
