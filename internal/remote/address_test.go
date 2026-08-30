@@ -198,7 +198,7 @@ func TestSelect(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			files, err := Select(c.addr, opts)
+			files, err := Select(c.addr, opts, false)
 			if err != nil {
 				t.Fatalf("Select(%+v) failed: %v", c.addr, err)
 			}
@@ -217,7 +217,7 @@ func TestSelect(t *testing.T) {
 func TestSelectLocalPathsPointAtRealFiles(t *testing.T) {
 	opts := selectTestBoard(t)
 
-	files, err := Select(Address{Bulb: "epics", Area: "fitness", Project: "running"}, opts)
+	files, err := Select(Address{Bulb: "epics", Area: "fitness", Project: "running"}, opts, false)
 	if err != nil {
 		t.Fatalf("Select failed: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestSelectRejectsUnknownAddresses(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if _, err := Select(c.addr, opts); err == nil {
+			if _, err := Select(c.addr, opts, false); err == nil {
 				t.Errorf("Select(%+v) succeeded, want error", c.addr)
 			}
 		})
@@ -265,7 +265,7 @@ func TestSelectSkipsParkedCopies(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := Select(Address{Bulb: "epics", Area: "fitness", Project: "running"}, opts)
+	files, err := Select(Address{Bulb: "epics", Area: "fitness", Project: "running"}, opts, false)
 	if err != nil {
 		t.Fatalf("Select failed: %v", err)
 	}
@@ -322,5 +322,40 @@ func TestParseCommandRejectsBadFlags(t *testing.T) {
 				t.Errorf("ParseCommand(%v) succeeded, want error", c.args)
 			}
 		})
+	}
+}
+
+// --git sends the repository so the agent can commit against your history.
+// Plant only: harvest never collects a .git, whatever put one there.
+func TestParseCommandGitFlag(t *testing.T) {
+	got, err := ParseCommand([]string{"plant", "scripts/garlic", "--git", "@", "agent"})
+	if err != nil {
+		t.Fatalf("ParseCommand failed: %v", err)
+	}
+	if !got.Git {
+		t.Error("--git did not set Git")
+	}
+	if got.Address.Bulb != "scripts" || got.Address.Area != "garlic" {
+		t.Errorf("the address was lost: %+v", got.Address)
+	}
+
+	before, err := ParseCommand([]string{"plant", "--git", "scripts/garlic", "@", "agent"})
+	if err != nil || !before.Git {
+		t.Errorf("--git before the address should parse too: %+v %v", before, err)
+	}
+
+	plain, err := ParseCommand([]string{"plant", "scripts/garlic", "@", "agent"})
+	if err != nil || plain.Git {
+		t.Errorf("plant without the flag must not send .git: %+v %v", plain, err)
+	}
+
+	for _, args := range [][]string{
+		{"harvest", "scripts/garlic", "--git", "@", "agent"},
+		{"status", "--git", "@", "agent"},
+		{"wipe", "scripts/garlic", "--git", "@", "agent"},
+	} {
+		if _, err := ParseCommand(args); err == nil {
+			t.Errorf("ParseCommand(%v) accepted --git, want an error", args)
+		}
 	}
 }

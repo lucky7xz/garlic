@@ -370,7 +370,7 @@ type visibility struct {
 
 func (v visibility) allows(rel string) bool {
 	parts := strings.Split(rel, "/")
-	if len(parts) < 3 || parts[0] != v.Bulb || ignored(rel, v.Ignore) {
+	if len(parts) < 3 || parts[0] != v.Bulb || ignored(rel, v.Ignore, false) {
 		return false
 	}
 	return v.plantedUnder(parts[0] + "/" + parts[1])

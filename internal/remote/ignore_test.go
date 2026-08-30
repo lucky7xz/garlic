@@ -28,7 +28,7 @@ func TestIgnored(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := ignored(c.rel, c.patterns); got != c.want {
+			if got := ignored(c.rel, c.patterns, false); got != c.want {
 				t.Errorf("ignored(%q, %v) = %v, want %v", c.rel, c.patterns, got, c.want)
 			}
 		})

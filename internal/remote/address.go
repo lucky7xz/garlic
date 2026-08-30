@@ -26,6 +26,10 @@ type Command struct {
 	Verb    string
 	Address Address
 	Remote  string
+	// Git sends the repository along with the work, so the agent can commit
+	// against your real history. Only plant accepts it: harvest never collects
+	// a .git, whatever put one there.
+	Git bool
 }
 
 // How deep an address each verb accepts. plant and harvest write, so they insist
@@ -56,9 +60,20 @@ func ParseCommand(args []string) (Command, error) {
 	}
 	cmd.Remote = remote
 
-	if len(rest) > 0 && strings.HasPrefix(rest[0], "-") {
-		return cmd, fmt.Errorf("%s takes no %s", cmd.Verb, rest[0])
+	// Flags are peeled wherever they sit, so `plant --git epics` and
+	// `plant epics --git` both read the same.
+	var address []string
+	for _, arg := range rest {
+		if !strings.HasPrefix(arg, "-") {
+			address = append(address, arg)
+			continue
+		}
+		if arg != "--git" || cmd.Verb != "plant" {
+			return cmd, fmt.Errorf("%s takes no %s", cmd.Verb, arg)
+		}
+		cmd.Git = true
 	}
+	rest = address
 
 	if len(rest) > 1 {
 		return cmd, fmt.Errorf("%s takes a single address", cmd.Verb)
@@ -126,13 +141,13 @@ type File struct {
 
 // Select turns an address into the files it covers. It fails when the address
 // names nothing, because planting into thin air is a typo, not a no-op.
-func Select(addr Address, opts []domain.BoardOptions) ([]File, error) {
+func Select(addr Address, opts []domain.BoardOptions, keepGit bool) ([]File, error) {
 	bulb, err := findBulb(addr.Bulb, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	all, err := BulbFiles(bulb)
+	all, err := BulbFiles(bulb, keepGit)
 	if err != nil {
 		return nil, err
 	}
@@ -164,13 +179,13 @@ func Select(addr Address, opts []domain.BoardOptions) ([]File, error) {
 // an area holding several projects, and a project is its file plus its resource
 // folder. On a semi bulb the category is itself the project: a .clove.md marks
 // the folder as in play, and the whole folder goes with it.
-func BulbFiles(bulb domain.BoardOptions) ([]File, error) {
+func BulbFiles(bulb domain.BoardOptions, keepGit bool) ([]File, error) {
 	board := filesystem.ScanBoard(bulb)
 
 	if bulb.WholeFolder {
 		var files []File
 		for _, category := range trackedCategories(board) {
-			got, err := walkTree(filepath.Join(bulb.Path, category), bulb)
+			got, err := walkTree(filepath.Join(bulb.Path, category), bulb, keepGit)
 			if err != nil {
 				return nil, err
 			}
@@ -184,7 +199,7 @@ func BulbFiles(bulb domain.BoardOptions) ([]File, error) {
 		base := strings.TrimSuffix(p.Name, bulb.Extension)
 		files = append(files, File{Rel: Rel(bulb, p.Path), Local: p.Path})
 
-		resources, err := walkTree(filepath.Join(filepath.Dir(p.Path), base), bulb)
+		resources, err := walkTree(filepath.Join(filepath.Dir(p.Path), base), bulb, keepGit)
 		if err != nil {
 			return nil, err
 		}
@@ -232,7 +247,7 @@ func boardProjects(board domain.Board) []domain.Project {
 
 // walkTree collects every file under dir that is allowed to travel. Ignored
 // directories are skipped whole, so a .git never gets walked at all.
-func walkTree(dir string, bulb domain.BoardOptions) ([]File, error) {
+func walkTree(dir string, bulb domain.BoardOptions, keepGit bool) ([]File, error) {
 	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
 		return nil, nil
@@ -244,7 +259,7 @@ func walkTree(dir string, bulb domain.BoardOptions) ([]File, error) {
 			return err
 		}
 		rel := Rel(bulb, p)
-		if ignored(rel, bulb.Ignore) {
+		if ignored(rel, bulb.Ignore, keepGit) {
 			if d.IsDir() {
 				return fs.SkipDir
 			}
@@ -291,9 +306,16 @@ func isParked(name string) bool {
 // objects stayed — leaving branch pointers and worktree disagreeing. Patterns
 // come from the bulb's `ignore` list and match whole path segments, never
 // substrings, so "dist" cannot swallow "distributed".
-func ignored(rel string, patterns []string) bool {
+// keepGit is set only by `plant --git`, which seeds a repository so the agent
+// can commit against your history. Harvest passes false without exception:
+// rsync merges without deleting, so a collected refs/ or index landing over your
+// objects would leave branch pointers and worktree disagreeing.
+func ignored(rel string, patterns []string, keepGit bool) bool {
 	for _, segment := range strings.Split(rel, "/") {
-		if segment == ".git" || isParked(segment) {
+		if segment == ".git" && !keepGit {
+			return true
+		}
+		if isParked(segment) {
 			return true
 		}
 		if slices.Contains(patterns, segment) {

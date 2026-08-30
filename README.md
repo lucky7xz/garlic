@@ -204,14 +204,44 @@ the first time it finds it missing, or `garlic completion bash` prints the hook
 to place yourself.
 
 **What travels:** on a full bulb, a project file plus its resource folder. On a
-semi bulb the folder *is* the project, so all of it goes. `.git` never travels,
-and you can exclude more per bulb:
+semi bulb the folder *is* the project, so all of it goes. `.git` stays home
+unless you ask for it (below), and you can exclude more per bulb:
 
 ```toml
 [[semi-bulb]]
 path   = "~/shara/scripts"
 ignore = ["dist", "node_modules", "target", ".venv"]
 ```
+
+### 🔀 Handing over a git repo
+
+`garlic plant scripts/garlic --git @ agent` sends the repository too, and checks
+out a branch garlic owns on the remote — `garlic/agent`, named after the remote.
+The agent commits there, against your real history.
+
+Harvest then does not copy files, because that would flatten every commit into
+one. It fetches:
+
+```
+garlic harvest scripts/garlic @ agent
+  a git repository — commits travel, files do not
+
+  fetched garlic/agent → refs/remotes/agent/garlic
+
+  4 commits
+    a3f9c1  add retry to the fetch loop
+    7c2104  cover the timeout path
+
+  nothing merged, nothing of yours touched.
+    git merge refs/remotes/agent/garlic
+```
+
+Not merging is the point — it is the same stance harvest takes everywhere:
+carry it across, leave the decision. Anything the agent left *uncommitted* is
+named too, since no fetch can see it.
+
+`--git` seeds the repo once and refuses afterwards: re-sending `.git` would push
+your refs over the agent's. From then on git is the channel.
 
 ### 🌱 What is planted where
 
@@ -271,10 +301,11 @@ rather than guessing.
 <details>
 <summary><b>What never travels, and why</b></summary>
 
-`.git` is excluded always, and it is not a size rule but a correctness one: rsync
-merges without deleting, so a harvested `refs/` or `index` would land on top of
-yours while your objects stayed, leaving branch pointers and worktree
-disagreeing.
+`.git` is never *collected*, and that is a correctness rule rather than a size
+one: rsync merges without deleting, so a harvested `refs/` or `index` would land
+on top of yours while your objects stayed, leaving branch pointers and worktree
+disagreeing. Planting into an empty tree has no such hazard, which is why
+`plant --git` exists and harvest has no counterpart — it fetches instead.
 
 Everything else is up to you, via `ignore` on the bulb. Patterns match whole path
 segments rather than substrings, so `dist` cannot swallow `distributed`.

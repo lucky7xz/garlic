@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/lucky7xz/garlic/internal/domain"
@@ -55,7 +56,7 @@ func rels(files []File) []string {
 }
 
 func TestBulbFilesTakesTheWholeFolder(t *testing.T) {
-	got, err := BulbFiles(semiBulb(t))
+	got, err := BulbFiles(semiBulb(t), false)
 	if err != nil {
 		t.Fatalf("BulbFiles failed: %v", err)
 	}
@@ -76,11 +77,11 @@ func TestSelectOnSemiBulbIgnoresProjectDepth(t *testing.T) {
 	bulb := semiBulb(t)
 	opts := []domain.BoardOptions{bulb}
 
-	whole, err := Select(Address{Bulb: "scripts", Area: "garlic"}, opts)
+	whole, err := Select(Address{Bulb: "scripts", Area: "garlic"}, opts, false)
 	if err != nil {
 		t.Fatalf("Select(area) failed: %v", err)
 	}
-	one, err := Select(Address{Bulb: "scripts", Area: "garlic", Project: "revise"}, opts)
+	one, err := Select(Address{Bulb: "scripts", Area: "garlic", Project: "revise"}, opts, false)
 	if err != nil {
 		t.Fatalf("Select(project) failed: %v", err)
 	}
@@ -94,7 +95,7 @@ func TestSelectOnSemiBulbIgnoresProjectDepth(t *testing.T) {
 func TestFullBulbUnaffectedByWholeFolder(t *testing.T) {
 	opts := selectTestBoard(t)
 
-	files, err := Select(Address{Bulb: "epics", Area: "fitness", Project: "running"}, opts)
+	files, err := Select(Address{Bulb: "epics", Area: "fitness", Project: "running"}, opts, false)
 	if err != nil {
 		t.Fatalf("Select failed: %v", err)
 	}
@@ -141,5 +142,58 @@ func TestVisibilityWholeFolder(t *testing.T) {
 				t.Errorf("allows(%q) = %v, want %v", c.rel, got, c.want)
 			}
 		})
+	}
+}
+
+// --git seeds a repository so the agent can commit against your history. It
+// changes only what plant selects; nothing that feeds harvest ever keeps .git.
+func TestSelectWithGit(t *testing.T) {
+	opts := []domain.BoardOptions{semiBulb(t)}
+	addr := Address{Bulb: "scripts", Area: "garlic"}
+
+	without, err := Select(addr, opts, false)
+	if err != nil {
+		t.Fatalf("Select failed: %v", err)
+	}
+	for _, rel := range rels(without) {
+		if strings.Contains(rel, "/.git/") {
+			t.Errorf("plain plant sent %q", rel)
+		}
+	}
+
+	with, err := Select(addr, opts, true)
+	if err != nil {
+		t.Fatalf("Select(--git) failed: %v", err)
+	}
+
+	var git []string
+	for _, rel := range rels(with) {
+		if strings.Contains(rel, "/.git/") {
+			git = append(git, rel)
+		}
+	}
+	want := []string{"scripts/garlic/.git/HEAD", "scripts/garlic/.git/objects/ab/cdef"}
+	if !slices.Equal(git, want) {
+		t.Errorf("--git sent\n  %v\nwant\n  %v", git, want)
+	}
+
+	// The ignore list is untouched by the flag: dist stays out either way.
+	for _, rel := range rels(with) {
+		if strings.Contains(rel, "/dist/") {
+			t.Errorf("--git overrode the ignore list: %q", rel)
+		}
+	}
+}
+
+// bulbCensus feeds harvest, so it must never keep .git whatever plant sent.
+func TestBulbCensusNeverKeepsGit(t *testing.T) {
+	census, err := bulbCensus(semiBulb(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rel := range census {
+		if strings.Contains(rel, "/.git/") {
+			t.Errorf("harvest would compare against %q", rel)
+		}
 	}
 }

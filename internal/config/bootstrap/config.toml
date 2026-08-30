@@ -80,6 +80,10 @@ statuses = ["inProgress", "onHold"]
 # │   garlic wipe    epics/fitness/running @ agent   (reset one project)
 # │   garlic wipe                          @ agent   (every bulb)
 # │
+# │ Add --git to plant to send the repository too. The agent then commits on
+# │ a branch garlic owns, and harvest fetches those commits instead of
+# │ copying files -- which would flatten them into one.
+# │
 # │ Press `c` on the board to see what is planted where. Nothing is cached:
 # │ garlic asks the remote, and the answer lives until you quit.
 # │

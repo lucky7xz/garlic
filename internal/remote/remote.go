@@ -37,7 +37,7 @@ func Run(cfg domain.Config, args []string) error {
 
 	switch cmd.Verb {
 	case "plant":
-		return plant(cfg, c, cmd.Address)
+		return plant(cfg, c, cmd.Address, cmd.Git)
 	case "harvest":
 		return harvest(cfg, c, cmd.Address, true)
 	case "status":
@@ -263,14 +263,14 @@ func target(addr Address) string {
 
 // plant tops the remote up: it sends what the agent has not touched, and says
 // so about everything it therefore left alone.
-func plant(cfg domain.Config, c *conn, addr Address) error {
+func plant(cfg domain.Config, c *conn, addr Address, withGit bool) error {
 	opts := cfg.GetBoardOptions()
 	bulb, err := findBulb(addr.Bulb, opts)
 	if err != nil {
 		return err
 	}
 
-	files, err := Select(addr, opts)
+	files, err := Select(addr, opts, withGit)
 	if err != nil {
 		return err
 	}
@@ -297,6 +297,14 @@ func plant(cfg domain.Config, c *conn, addr Address) error {
 		return err
 	}
 
+	// Seeding a repository happens once. After that git is the channel, and
+	// re-sending .git would push your refs over the agent's -- so this refuses
+	// rather than doing it quietly.
+	if withGit && repoAt(remote, addr, bulb) {
+		return fmt.Errorf("%s already has a repository on %s — git is the channel now:\n  git fetch %s:%s %s",
+			addr.String(), c.remote.Name, c.remote.Host, c.gitDir(addr), gitBranch(c.remote.Name))
+	}
+
 	moves := Classify(
 		Manifest(scope(Census(base.Hashes), addr, bulb)),
 		local,
@@ -320,6 +328,15 @@ func plant(cfg domain.Config, c *conn, addr Address) error {
 	}
 
 	report("plant", addr.String(), c.Describe(), p)
+
+	if withGit {
+		branch := gitBranch(c.remote.Name)
+		if err := c.startBranch(addr, branch); err != nil {
+			return err
+		}
+		fmt.Printf("\n  the repository went too. the agent commits on %s;\n", branch)
+		fmt.Printf("  `garlic harvest %s @ %s` fetches those commits\n", addr.String(), c.remote.Name)
+	}
 	return nil
 }
 
@@ -371,6 +388,16 @@ func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
 				here.String(), c.Describe())
 		}
 
+		// A repository is git's to move. Copying its working tree home would
+		// flatten every commit into one and, worse, race with the merge you
+		// would then have to do -- the same change arriving twice.
+		if here.Area != "" && repoAt(remote, here, bulb) {
+			if err := harvestRepo(c, bulb, here, apply); err != nil {
+				return err
+			}
+			continue
+		}
+
 		p, taken := reckon(bulb, here, base.Hashes, remote, all)
 
 		if apply {
@@ -393,10 +420,75 @@ func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
 	return nil
 }
 
+// harvestRepo is harvest for a git repository: fetch the branch the agent works
+// on and say what arrived. It merges nothing, which is the same stance harvest
+// takes everywhere else -- carry it across, touch nothing of yours, leave the
+// decision.
+func harvestRepo(c *conn, bulb domain.BoardOptions, addr Address, apply bool) error {
+	local := filepath.Join(bulb.Path, addr.Area)
+	branch := gitBranch(c.remote.Name)
+
+	fmt.Printf("%s %s @ %s\n", verbLabel(apply), addr.String(), c.Describe())
+	fmt.Printf("  a git repository — commits travel, files do not\n")
+
+	dirty, err := c.uncommitted(addr)
+	if err != nil {
+		return err
+	}
+
+	if !apply {
+		fmt.Printf("\n  `garlic harvest %s @ %s` fetches %s\n", addr.String(), c.remote.Name, branch)
+		reportDirty(dirty)
+		return nil
+	}
+
+	if err := c.fetch(local, addr, c.remote.Name); err != nil {
+		return err
+	}
+	commits, err := arrived(local, c.remote.Name)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("\n  fetched %s → %s\n", branch, trackingRef(c.remote.Name))
+	if len(commits) == 0 {
+		fmt.Printf("  no commits you do not already have\n")
+	} else {
+		fmt.Printf("\n  %d commits\n", len(commits))
+		for _, line := range commits {
+			fmt.Printf("    %s\n", line)
+		}
+		fmt.Printf("\n  nothing merged, nothing of yours touched.\n")
+		fmt.Printf("    git log %s\n", trackingRef(c.remote.Name))
+		fmt.Printf("    git merge %s\n", trackingRef(c.remote.Name))
+	}
+	reportDirty(dirty)
+	return nil
+}
+
+// reportDirty names what the agent left uncommitted. A fetch cannot see it, and
+// saying nothing would read as "there was nothing to collect".
+func reportDirty(dirty []string) {
+	if len(dirty) == 0 {
+		return
+	}
+	fmt.Printf("\n  %d files are uncommitted over there, so no fetch can bring them:\n", len(dirty))
+	for i, rel := range dirty {
+		if i == 5 {
+			fmt.Printf("    ... and %d more\n", len(dirty)-i)
+			break
+		}
+		fmt.Printf("    %s\n", rel)
+	}
+}
+
 // bulbCensus is everything a bulb holds locally, hashed. The caller keeps it so
 // that validating the address and reckoning against it share one walk.
+//
+// Never keeps .git: this feeds harvest, and a collected repository is the one
+// thing that can corrupt yours.
 func bulbCensus(bulb domain.BoardOptions) (Census, error) {
-	files, err := BulbFiles(bulb)
+	files, err := BulbFiles(bulb, false)
 	if err != nil {
 		return nil, err
 	}
@@ -451,7 +543,7 @@ func addressNames(addr Address, bulb domain.BoardOptions, states ...Census) bool
 func scope(census Census, addr Address, bulb domain.BoardOptions) Census {
 	out := Census{}
 	for rel, hash := range census {
-		if inScope(rel, addr, bulb.Extension, bulb.WholeFolder) && !ignored(rel, bulb.Ignore) {
+		if inScope(rel, addr, bulb.Extension, bulb.WholeFolder) && !ignored(rel, bulb.Ignore, false) {
 			out[rel] = hash
 		}
 	}
