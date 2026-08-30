@@ -204,8 +204,9 @@ the first time it finds it missing, or `garlic completion bash` prints the hook
 to place yourself.
 
 **What travels:** on a full bulb, a project file plus its resource folder. On a
-semi bulb the folder *is* the project, so all of it goes. `.git` stays home
-unless you ask for it (below), and you can exclude more per bulb:
+semi bulb the folder *is* the project, so all of it goes. Projects you have
+hidden with `#garlic-hide` stay home — that is what hiding means. `.git` stays
+home too unless you ask for it (below), and you can exclude more per bulb:
 
 ```toml
 [[semi-bulb]]

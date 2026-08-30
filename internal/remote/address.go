@@ -324,3 +324,40 @@ func ignored(rel string, patterns []string, keepGit bool) bool {
 	}
 	return false
 }
+
+// hiddenUnder is every path belonging to a project you have hidden: the project
+// file, and everything in its resource folder.
+//
+// #garlic-hide is the board's one way of saying "not in play", and plant is the
+// only verb that honours it -- harvest has to keep comparing hidden projects or
+// it could never ask whether you still want their changes.
+func hiddenUnder(bulb domain.BoardOptions) map[string]bool {
+	board := filesystem.ScanBoard(bulb)
+
+	out := map[string]bool{}
+	for _, byCategory := range board.HiddenGrid {
+		for _, projects := range byCategory {
+			for _, p := range projects {
+				rel := Rel(bulb, p.Path)
+				out[rel] = true
+				out[strings.TrimSuffix(rel, bulb.Extension)+"/"] = true
+			}
+		}
+	}
+	return out
+}
+
+// isHidden reports whether a path is a hidden project or lives in its resource
+// folder. The folder entries are stored with a trailing slash so that a prefix
+// test cannot let "running" swallow "running-log".
+func isHidden(rel string, hidden map[string]bool) bool {
+	if hidden[rel] {
+		return true
+	}
+	for prefix := range hidden {
+		if strings.HasSuffix(prefix, "/") && strings.HasPrefix(rel, prefix) {
+			return true
+		}
+	}
+	return false
+}

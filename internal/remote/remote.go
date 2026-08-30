@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lucky7xz/garlic/internal/domain"
+	"github.com/lucky7xz/garlic/internal/filesystem"
 	"golang.org/x/term"
 )
 
@@ -99,6 +100,7 @@ func wipe(cfg domain.Config, c *conn, addr Address) error {
 		return fmt.Errorf("wipe needs a terminal to confirm")
 	}
 	if !confirm(os.Stdout, os.Stdin, gates(addr, c.remote.Name, len(doomed))) {
+		fmt.Println("  nothing was wiped")
 		return nil
 	}
 
@@ -274,6 +276,21 @@ func plant(cfg domain.Config, c *conn, addr Address, withGit bool) error {
 	if err != nil {
 		return err
 	}
+
+	// #garlic-hide is the board's way of saying "not in play", and plant is the
+	// only verb that honours it. Both sides are filtered, not just this one:
+	// filtering only here would leave Classify seeing planted + no-local +
+	// remote-present and calling it LocalGone, so plant would report a hidden
+	// project as "gone from your side". It is not gone.
+	hidden := hiddenUnder(bulb)
+	kept := files[:0]
+	for _, f := range files {
+		if !isHidden(f.Rel, hidden) {
+			kept = append(kept, f)
+		}
+	}
+	files = kept
+
 	local, err := localCensus(files)
 	if err != nil {
 		return err
@@ -305,10 +322,13 @@ func plant(cfg domain.Config, c *conn, addr Address, withGit bool) error {
 			addr.String(), c.remote.Name, c.remote.Host, c.gitDir(addr), gitBranch(c.remote.Name))
 	}
 
+	// Manifest entries from before something was hidden are left alone: with
+	// both sides filtered they read as Still, inert, exactly as an ignored
+	// path's would.
 	moves := Classify(
 		Manifest(scope(Census(base.Hashes), addr, bulb)),
 		local,
-		scope(remote, addr, bulb),
+		visible(scope(remote, addr, bulb), hidden),
 	)
 	p := PlantPlan(moves)
 
@@ -400,9 +420,40 @@ func harvest(cfg domain.Config, c *conn, addr Address, apply bool) error {
 
 		p, taken := reckon(bulb, here, base.Hashes, remote, all)
 
+		// Harvest compares hidden projects like any other -- it has to, or it
+		// could never ask whether you still want their changes.
+		hidden := hiddenUnder(bulb)
+		var setAside []string
+		for _, rel := range p.Take {
+			if isHidden(rel, hidden) {
+				setAside = append(setAside, rel)
+			}
+		}
+
+		// status changes nothing, so it names them and asks nothing.
+		takeHidden := false
+		if len(setAside) > 0 {
+			fmt.Print(renderSetAside(setAside))
+			if apply {
+				takeHidden = confirm(os.Stdout, os.Stdin,
+					[]gate{{prompt: "still harvest them? [y/N] "}})
+				if !takeHidden {
+					p = withoutTakes(p, setAside)
+				}
+			}
+		}
+
 		if apply {
 			if err := collect(c, bulb, p); err != nil {
 				return err
+			}
+			// The agent's copy never carried the marker -- you hid yours after
+			// planting -- so collecting it would return the project to the
+			// visible board without saying so.
+			if takeHidden {
+				if err := rehide(bulb, setAside); err != nil {
+					return err
+				}
 			}
 			// Parking advances the baseline as much as collecting does. The
 			// agent's version is now in your resource folder, so the conflict
@@ -538,6 +589,65 @@ func addressNames(addr Address, bulb domain.BoardOptions, states ...Census) bool
 		}
 	}
 	return false
+}
+
+// renderSetAside names what harvest would collect into a project you have hidden.
+func renderSetAside(rels []string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\n  hidden here, but the agent changed them (%d)\n", len(rels))
+	for _, rel := range rels {
+		fmt.Fprintf(&b, "    %s\n", rel)
+	}
+	fmt.Fprint(&b, "  ")
+	return b.String()
+}
+
+// withoutTakes drops paths from Take, leaving the baseline un-advanced for them
+// so the question returns next time rather than being silently settled.
+func withoutTakes(p Plan, drop []string) Plan {
+	gone := map[string]bool{}
+	for _, rel := range drop {
+		gone[rel] = true
+	}
+
+	kept := p.Take[:0]
+	for _, rel := range p.Take {
+		if !gone[rel] {
+			kept = append(kept, rel)
+		}
+	}
+	p.Take = kept
+	return p
+}
+
+// rehide puts #garlic-hide back after a collect. The agent's copy never carried
+// one -- you hid your copy after planting -- so taking it would otherwise return
+// the project to the visible board without saying so.
+func rehide(bulb domain.BoardOptions, rels []string) error {
+	for _, rel := range rels {
+		if !strings.HasSuffix(rel, bulb.Extension) {
+			continue // a resource; only the project file carries the marker
+		}
+		local := filepath.Join(bulb.Path, strings.TrimPrefix(rel, bulb.Name+"/"))
+		if filesystem.GetTags(local).Hidden {
+			continue
+		}
+		if err := filesystem.ToggleHiddenMarker(local); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// visible drops the paths of hidden projects from a census.
+func visible(census Census, hidden map[string]bool) Census {
+	out := Census{}
+	for rel, hash := range census {
+		if !isHidden(rel, hidden) {
+			out[rel] = hash
+		}
+	}
+	return out
 }
 
 func scope(census Census, addr Address, bulb domain.BoardOptions) Census {

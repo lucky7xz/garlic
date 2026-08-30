@@ -57,13 +57,16 @@ func gates(addr Address, remote string, files int) []gate {
 // confirm asks each gate in turn and reports whether every one was answered.
 // Anything unexpected is a refusal -- including end of input, which is what a
 // pipe or a cron job looks like, and neither should be able to wipe unattended.
+//
+// It says only that nothing happened, never what: the gates now guard more than
+// wipe, so naming the consequence is the caller's job.
 func confirm(w io.Writer, r io.Reader, ask []gate) bool {
 	in := bufio.NewScanner(r)
 
 	for _, g := range ask {
 		fmt.Fprint(w, g.prompt)
 		if !in.Scan() {
-			fmt.Fprintln(w, "\nno answer — nothing was wiped")
+			fmt.Fprintln(w, "\n  no answer, so nothing was done")
 			return false
 		}
 
@@ -73,7 +76,7 @@ func confirm(w io.Writer, r io.Reader, ask []gate) bool {
 			ok = answer == "y" || answer == "yes"
 		}
 		if !ok {
-			fmt.Fprintln(w, "nothing was wiped")
+			fmt.Fprintln(w, "  nothing was done")
 			return false
 		}
 	}
