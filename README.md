@@ -152,7 +152,8 @@ statuses = ["inProgress", "onHold"]
 - `o` / `p` – cycle between workspaces (Bulbs)
 - `alt+1` … `alt+9` – jump straight to a workspace by number. Numbering follows the order Garlic loads bulbs — all `full-bulb`s first, then all `semi-bulb`s — which is the `[2/3]` counter in the header
 - `tab` – toggle hidden view
-- `c` – check which projects are planted on your remotes
+- `g` – check which projects are planted on your remotes
+- `alt+g` – ssh into the selected project's folder on the remote holding it
 - `q` – quit Garlic
 
 ### 🛠️ Bring Your Own Tools
@@ -246,7 +247,7 @@ your refs over the agent's. From then on git is the channel.
 
 ### 🌱 What is planted where
 
-Press `c` on the board. Garlic asks every configured remote what it is holding
+Press `g` on the board. Garlic asks every configured remote what it is holding
 and marks what is out there. Columns are areas, cells are the projects in them:
 
 | fitness | learning 🌱 |

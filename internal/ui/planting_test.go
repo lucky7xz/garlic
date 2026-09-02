@@ -248,17 +248,32 @@ func TestFailedCheckKeepsTheLastAnswer(t *testing.T) {
 	}
 }
 
-// Pressing c while a check is already out must not launch a second one.
+// Pressing g while a check is already out must not launch a second one.
 func TestCheckIsNotReentrant(t *testing.T) {
 	m := plantedModel(nil)
 	m.Checking = true
 
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 	if cmd != nil {
-		t.Error("a second c while checking launched another check")
+		t.Error("a second g while checking launched another check")
 	}
 	if !next.(Model).Checking {
 		t.Error("the in-flight flag was lost")
+	}
+}
+
+// g is the key that asks, and it has to reach checkRemotes -- the test above
+// only proves the reentrancy guard, which an unbound key would also satisfy.
+func TestCheckKeyStartsACheck(t *testing.T) {
+	m := plantedModel(nil)
+	m.Remotes = []domain.Remote{{Name: "agent", Host: "agent", Root: "/srv"}}
+
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	if cmd == nil {
+		t.Error("g did not start a check")
+	}
+	if !next.(Model).Checking {
+		t.Error("g left the in-flight flag unset")
 	}
 }
 
@@ -367,4 +382,181 @@ func TestAgo(t *testing.T) {
 			t.Errorf("ago(%v) = %q, want %q", c.d, got, c.want)
 		}
 	}
+}
+
+// connectModel is a checked board where mealprep went to the given hosts, each
+// of them also configured as a remote.
+func connectModel(hosts ...string) Model {
+	m := plantedModel(map[string][]string{"epics/bioz/mealprep.md": hosts})
+	m.Planted.Hosts = hosts
+	m.AltModifier = "alt"
+	for _, h := range hosts {
+		m.Remotes = append(m.Remotes, domain.Remote{Name: h, Host: h, Root: "/srv"})
+	}
+	return m
+}
+
+// alt+g acts on what a check found. With nothing found -- because nobody asked,
+// or because the project is not out there -- it must say so rather than open a
+// session on a guess.
+func TestConnectRefusesToGuess(t *testing.T) {
+	cases := []struct {
+		name  string
+		model func() Model
+		want  string
+	}{
+		{
+			"before any check",
+			func() Model {
+				m := plantedModel(nil)
+				m.AltModifier = "alt"
+				return m
+			},
+			"press g",
+		},
+		{
+			"checked, but this project never went",
+			func() Model {
+				m := connectModel("agent")
+				m.GridCursor.Project = 1 // sleeplog, never planted
+				return m
+			},
+			"sleeplog.md",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := c.model()
+			next, cmd := m.Update(altKey(t, 'g'))
+			got := next.(Model)
+
+			if cmd != nil {
+				t.Error("alt+g connected without knowing where to")
+			}
+			if !strings.Contains(got.ErrorMsg, c.want) {
+				t.Errorf("ErrorMsg is %q, want it to mention %q", got.ErrorMsg, c.want)
+			}
+			if got.State != stateNormal {
+				t.Error("a refusal must leave the board alone")
+			}
+		})
+	}
+}
+
+// One host is not a choice, so there is nothing to ask.
+func TestConnectGoesStraightToASingleHost(t *testing.T) {
+	next, cmd := connectModel("agent").Update(altKey(t, 'g'))
+	got := next.(Model)
+
+	if cmd == nil {
+		t.Fatal("alt+g on a planted project did not connect")
+	}
+	if got.State != stateNormal {
+		t.Error("a single host must not open the picker")
+	}
+	if got.ErrorMsg != "" {
+		t.Errorf("unexpected error %q", got.ErrorMsg)
+	}
+}
+
+// Two hosts is a question, and the answer has to be picked before ssh runs.
+func TestConnectPicksBetweenHosts(t *testing.T) {
+	next, cmd := connectModel("agent", "berta").Update(altKey(t, 'g'))
+	m := next.(Model)
+
+	if cmd != nil {
+		t.Fatal("alt+g connected before the host was chosen")
+	}
+	if m.State != stateConnecting {
+		t.Fatal("alt+g on two hosts did not open the picker")
+	}
+	if strings.Join(m.ConnectHosts, ",") != "agent,berta" {
+		t.Errorf("picker offers %q, want both hosts in config order", m.ConnectHosts)
+	}
+	if m.ConnectCursor != 0 {
+		t.Errorf("picker opened at %d, want the first host", m.ConnectCursor)
+	}
+	if m.ActionTarget.Name != "mealprep.md" {
+		t.Errorf("picker is about %q, want the project under the cursor", m.ActionTarget.Name)
+	}
+
+	// The overlay is the only thing on screen, and it names the choice.
+	view := m.View()
+	if !strings.Contains(view, "agent") || !strings.Contains(view, "berta") {
+		t.Errorf("the picker does not name both hosts:\n%s", view)
+	}
+
+	moved := press(t, m, "j")
+	if moved.ConnectCursor != 1 {
+		t.Errorf("cursor at %d after j, want 1", moved.ConnectCursor)
+	}
+	if up := press(t, moved, "k"); up.ConnectCursor != 0 {
+		t.Errorf("cursor at %d after k, want 0", up.ConnectCursor)
+	}
+
+	chosen, cmd := moved.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Error("enter did not connect")
+	}
+	if got := chosen.(Model); got.State != stateNormal || got.ConnectHosts != nil {
+		t.Error("the picker stayed up after choosing")
+	}
+}
+
+// The board's own keys stay put while the picker is open: q closes it rather
+// than quitting garlic, and the grid must not move underneath.
+func TestConnectPickerCancels(t *testing.T) {
+	m := connectModel("agent", "berta")
+	m.State, m.ConnectHosts, m.ActionTarget = stateConnecting, []string{"agent", "berta"}, m.Boards[0].Grid["toDo"]["bioz"][0]
+
+	cancelled, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got := cancelled.(Model)
+
+	if cmd != nil {
+		t.Error("esc did something")
+	}
+	if got.State != stateNormal || got.ConnectHosts != nil {
+		t.Error("esc left the picker up")
+	}
+
+	quit, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd != nil {
+		t.Error("q quit garlic instead of closing the picker")
+	}
+	if quit.(Model).State != stateNormal {
+		t.Error("q left the picker up")
+	}
+}
+
+// A remote named by a manifest but missing from the config reports rather than
+// running ssh against a name it cannot resolve.
+func TestConnectWithoutAMatchingRemote(t *testing.T) {
+	m := connectModel("agent")
+	m.Remotes = nil
+
+	_, cmd := m.Update(altKey(t, 'g'))
+	if cmd == nil {
+		t.Fatal("alt+g said nothing about an unknown remote")
+	}
+
+	msg, ok := cmd().(connectDoneMsg)
+	if !ok || msg.err == nil {
+		t.Fatalf("got %#v, want a connectDoneMsg carrying an error", msg)
+	}
+	if !strings.Contains(msg.err.Error(), "agent") {
+		t.Errorf("error is %q, want it to name the remote", msg.err)
+	}
+}
+
+// altKey builds the modified key the way a terminal sends it, checking that the
+// message really does read back as alt+<r>.
+func altKey(t *testing.T, r rune) tea.KeyMsg {
+	t.Helper()
+
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}, Alt: true}
+	if want := "alt+" + string(r); msg.String() != want {
+		t.Fatalf("built %q, want %q", msg.String(), want)
+	}
+	return msg
 }

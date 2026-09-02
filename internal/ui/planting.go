@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/lucky7xz/garlic/internal/domain"
 	"github.com/lucky7xz/garlic/internal/remote"
@@ -13,7 +14,7 @@ import (
 // Everything the board says about planting lives on one line: the footer, which
 // already changes with context. The header is left alone deliberately -- the
 // view is centered as a block, so widening the title line would shift the whole
-// board sideways the moment you pressed `c`.
+// board sideways the moment you pressed `g`.
 //
 //	never checked          ?: help • q: quit
 //	checked, plain card    ?: help • q: quit • 🌱 checked 14:20
@@ -24,6 +25,67 @@ import (
 // work has been over there, and how stale this picture of it is.
 
 const footerSep = " • "
+
+// connect hands the terminal to ssh, landing in the project's folder on the
+// named remote. tea.ExecProcess is what makes this a visit rather than an exit:
+// the board suspends, comes back when you log out, and the cursor is still on
+// the card you left from -- unlike `r` and enter, which quit and let the runner
+// take over.
+func (m Model) connect(board domain.Board, p domain.Project, host string) tea.Cmd {
+	r, ok := m.findRemote(host)
+	if !ok {
+		// The name came from a manifest a configured remote handed us, so this
+		// means the config changed under a check that is still on screen.
+		return func() tea.Msg {
+			return connectDoneMsg{fmt.Errorf("no remote named %q in your config", host)}
+		}
+	}
+
+	cmd := remote.Shell(r, remote.Rel(board.Opts, p.Path), board.Opts.Extension)
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return connectDoneMsg{err}
+	})
+}
+
+// findRemote resolves a name the way domain.Config.FindRemote does, against the
+// list the model kept: the board holds remotes, not the config they came from.
+func (m Model) findRemote(name string) (domain.Remote, bool) {
+	for _, r := range m.Remotes {
+		if r.Name == name {
+			return r, true
+		}
+	}
+	return domain.Remote{}, false
+}
+
+// connectMenu is the choice of remote, drawn when a project went to more than
+// one. It borrows the help overlay's frame so the two read as the same kind of
+// interruption, and needs no size floor of its own: a handful of host names is
+// narrower and shorter than the help the board already gates on.
+func (m Model) connectMenu() string {
+	var rows []string
+	for i, host := range m.ConnectHosts {
+		line := "  " + host
+		if i == m.ConnectCursor {
+			line = m.HeaderStyle.UnsetBorderStyle().Render("> " + host)
+		}
+		rows = append(rows, line)
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		m.HelpStyle.Render(plantedMark+" "+m.ActionTarget.Name+" is planted on"),
+		"",
+		lipgloss.JoinVertical(lipgloss.Left, rows...),
+		"",
+		m.HelpStyle.Render("enter: connect • esc: cancel"),
+	)
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.SeparatorStyle.GetForeground()).
+		Padding(1, 2).
+		Render(content)
+}
 
 // checkedAt says when the last check happened, or that one is still out. Empty
 // means nobody has asked yet, which is a different thing from having asked and

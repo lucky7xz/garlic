@@ -26,6 +26,7 @@ const (
 	stateRenaming
 	stateHelp
 	stateTooSmall
+	stateConnecting
 )
 
 // Layout floors, derived from what the renderer actually needs rather than
@@ -105,6 +106,12 @@ type Model struct {
 	Planted  remote.Sighting
 	Checking bool
 
+	// ConnectHosts is the choice alt+g is waiting on: the remotes holding the
+	// project under the cursor, in config order. It is set only while the
+	// picker is up, and only when there is more than one of them.
+	ConnectHosts  []string
+	ConnectCursor int
+
 	// Data state toggles
 	ShowHidden   bool
 	State        appState
@@ -156,6 +163,9 @@ func checkRemotes(remotes []domain.Remote) tea.Cmd {
 		return checkMsg{sighting: s, err: err}
 	}
 }
+
+// connectDoneMsg arrives when an ssh session ends, however it ended.
+type connectDoneMsg struct{ err error }
 
 func InitialModel(config domain.Config) Model {
 	boardOpts := config.GetBoardOptions()
@@ -408,6 +418,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case connectDoneMsg:
+		// A session you ended yourself is not news. A refused connection is,
+		// and it arrives here rather than on the screen ssh borrowed.
+		if msg.err != nil {
+			m.ErrorMsg = msg.err.Error()
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.TermWidth = msg.Width
 		m.TermHeight = msg.Height
@@ -532,6 +550,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// --- CONNECT STATE OVERRIDE ---
+		// Unlike moving, this picker keeps its own cursor: the list is remotes,
+		// not statuses, so borrowing GridCursor would scroll the board behind it.
+		if m.State == stateConnecting {
+			switch msg.String() {
+			case "esc", "q":
+				m.State, m.ConnectHosts = stateNormal, nil
+			case "enter", " ":
+				host := m.ConnectHosts[m.ConnectCursor]
+				m.State, m.ConnectHosts = stateNormal, nil
+				return m, m.connect(*currentBoard, m.ActionTarget, host)
+			case "up", "k", "w":
+				if m.ConnectCursor > 0 {
+					m.ConnectCursor--
+				}
+			case "down", "j", "s":
+				if m.ConnectCursor < len(m.ConnectHosts)-1 {
+					m.ConnectCursor++
+				}
+			}
+			return m, nil
+		}
+
 		// --- MOVE STATE OVERRIDE ---
 		if m.State == stateMoving {
 			switch msg.String() {
@@ -604,6 +645,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// --- NORMAL NAVIGATION STATE ---
 		modR := m.AltModifier + "+r"
+		modG := m.AltModifier + "+g"
 		modEnter := m.AltModifier + "+enter"
 		modSpace := m.AltModifier + "+ "
 
@@ -671,12 +713,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 
-		case "c":
+		case "g":
 			if m.Checking {
 				break
 			}
 			m.Checking = true
 			return m, checkRemotes(m.Remotes)
+
+		// The modified key acts on what the plain one found out. Nothing is
+		// guessed: without a check there is no answer to act on, and saying so
+		// beats opening a session somewhere the work may not be.
+		case modG:
+			p, ok := m.getSelectedProject()
+			if !ok {
+				break
+			}
+			switch hosts := m.plantedOn(*currentBoard, p); {
+			case !m.Planted.Checked():
+				m.ErrorMsg = "No check yet - press g first"
+			case len(hosts) == 0:
+				m.ErrorMsg = fmt.Sprintf("%s is not planted", p.Name)
+			case len(hosts) == 1:
+				return m, m.connect(*currentBoard, p, hosts[0])
+			default:
+				m.State, m.ActionTarget = stateConnecting, p
+				m.ConnectHosts, m.ConnectCursor = hosts, 0
+			}
 
 		case "enter", " ", modEnter, modSpace:
 			if p, ok := m.getSelectedProject(); ok {
@@ -995,8 +1057,11 @@ func (m Model) View() string {
 
 	finalView := lipgloss.JoinVertical(lipgloss.Center, headerStr, gridStr, footerStr)
 
-	if m.State == stateHelp {
+	if m.State == stateHelp || m.State == stateConnecting {
 		overlay := m.helpMenu()
+		if m.State == stateConnecting {
+			overlay = m.connectMenu()
+		}
 		return lipgloss.Place(m.TermWidth, m.TermHeight, lipgloss.Center, lipgloss.Center, overlay, lipgloss.WithWhitespaceChars(" "), lipgloss.WithWhitespaceForeground(lipgloss.Color("0")))
 	}
 
