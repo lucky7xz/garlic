@@ -19,6 +19,14 @@ Once Go is installed on your system, you can install garlic:
 go install github.com/lucky7xz/garlic@latest
 ```
 
+> **No Go toolchain?** Prebuilt static binaries for Linux, macOS and FreeBSD, plus `.deb` and `.rpm` packages, are on the [Releases](https://github.com/lucky7xz/garlic/releases) page.
+
+Or let the installer pick the right archive, verify its checksum and put the binary in your path:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lucky7xz/garlic/main/install.sh | sh
+```
+
 ### 🔄 Update
 
 To update garlic to the latest version, simply run the installation command again.

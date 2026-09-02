@@ -1,0 +1,115 @@
+# .goreleaser.yaml
+# Visit https://goreleaser.com for documentation.
+# Run `goreleaser check` to validate, `goreleaser release --snapshot --clean`
+# to dry-run locally.
+
+version: 2
+
+project_name: garlic
+
+before:
+  hooks:
+    - go mod tidy
+    # Collect the licences of every module linked into the binary. Generated
+    # here so it can never drift from go.mod.
+    - sh scripts/third-party-notices.sh
+
+builds:
+  - id: garlic
+    main: .
+    binary: garlic
+    env:
+      - CGO_ENABLED=0          # pure Go -> static binaries, run anywhere
+    ldflags:
+      - -s -w                  # strip debug info for smaller binaries
+      - -X github.com/lucky7xz/garlic/internal/config.version={{ .Tag }}
+    goos:
+      - linux
+      - darwin
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      - goos: darwin           # no 32-bit macOS
+        goarch: arm
+      - goos: freebsd          # keep the freebsd target minimal
+        goarch: arm
+      - goos: freebsd
+        goarch: arm64
+
+archives:
+  - formats: [tar.gz]
+    # Listed explicitly because this replaces the defaults.
+    files:
+      - LICENSE
+      - README.md
+      - THIRD-PARTY-NOTICES.md
+    # uname-compatible names: garlic_Linux_x86_64.tar.gz etc.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+# Linux packages (.deb / .rpm) — built into the release, no external repo needed.
+nfpms:
+  - id: packages
+    package_name: garlic
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    vendor: "Lucky7xz"
+    homepage: "https://github.com/lucky7xz/garlic"
+    maintainer: "Lucky7xz <lucky7xz@github.com>"
+    description: "Terminal Kanban board built on your filesystem."
+    license: "MIT"
+    formats:
+      - deb
+      - rpm
+    # Recommended, not required: the board itself is pure Go and needs nothing.
+    # Only the remote verbs shell out, and refusing to install garlic on a
+    # machine that never plants would be the wrong trade.
+    recommends:
+      - rsync
+    overrides:
+      deb:
+        recommends:
+          - openssh-client
+          - rsync
+      rpm:
+        recommends:
+          - openssh-clients
+          - rsync
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/garlic/LICENSE
+      - src: THIRD-PARTY-NOTICES.md
+        dst: /usr/share/doc/garlic/THIRD-PARTY-NOTICES.md
+
+release:
+  github:
+    owner: lucky7xz
+    name: garlic
+  draft: false
+  prerelease: auto
+
+# Channels that need external repos + secret tokens (Homebrew tap, AUR, Scoop)
+# are intentionally omitted until those repos and secrets exist. Re-add the
+# brews / aur / scoops blocks when ready.

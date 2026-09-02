@@ -113,6 +113,9 @@ func Run() {
 		case os.Args[1] == "init":
 			initDemo()
 			return
+		case os.Args[1] == "version", os.Args[1] == "--version", os.Args[1] == "-v":
+			fmt.Printf("%s %s\n", config.AppName, config.Version())
+			return
 		case os.Args[1] == "__complete":
 			// Completion reads only this machine, which is also the only thing
 			// that can be planted -- no ssh runs until you press enter. A broken
