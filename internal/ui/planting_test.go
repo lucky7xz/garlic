@@ -396,20 +396,23 @@ func connectModel(hosts ...string) Model {
 	return m
 }
 
-// alt+g reads the cursor: work a check found on a remote is over there, and
-// everything else -- unplanted, or never asked about -- is here. The board
-// never refuses, because the local folder is the one thing it always knows.
-func TestShellHostReadsTheCursor(t *testing.T) {
+// alt+g reads the cursor. Work that went somewhere lives in two places at
+// once, so anything planted is a question; work that never left has one answer
+// and gets it without being asked.
+func TestShellDestination(t *testing.T) {
 	cases := []struct {
 		name       string
 		model      func() Model
-		wantHost   string
-		wantChoose bool
+		wantPicker bool
 	}{
 		{
 			"nobody has asked yet",
-			func() Model { return plantedModel(nil) },
-			"", false,
+			func() Model {
+				m := plantedModel(nil)
+				m.AltModifier = "alt"
+				return m
+			},
+			false,
 		},
 		{
 			"checked, and this project never went",
@@ -418,31 +421,42 @@ func TestShellHostReadsTheCursor(t *testing.T) {
 				m.GridCursor.Project = 1 // sleeplog, never planted
 				return m
 			},
-			"", false,
+			false,
 		},
 		{
-			"planted on one remote",
+			"planted on one remote is still a choice: there, or here",
 			func() Model { return connectModel("agent") },
-			"agent", false,
+			true,
 		},
 		{
-			"planted on two is a question",
+			"planted on two",
 			func() Model { return connectModel("agent", "berta") },
-			"", true,
+			true,
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			m := c.model()
-			p, ok := m.getSelectedProject()
-			if !ok {
-				t.Fatal("no project under the cursor")
-			}
+			next, cmd := c.model().Update(altKey(t, 'g'))
+			got := next.(Model)
 
-			host, choose := m.shellHost(m.Boards[0], p)
-			if host != c.wantHost || choose != c.wantChoose {
-				t.Errorf("shellHost = (%q, %v), want (%q, %v)", host, choose, c.wantHost, c.wantChoose)
+			if c.wantPicker {
+				if got.State != stateConnecting {
+					t.Error("alt+g answered a question it should have asked")
+				}
+				if cmd != nil {
+					t.Error("alt+g opened a shell before the choice was made")
+				}
+				return
+			}
+			if got.State != stateNormal {
+				t.Error("alt+g asked about work that only lives here")
+			}
+			if cmd == nil {
+				t.Error("alt+g did nothing")
+			}
+			if got.ErrorMsg != "" {
+				t.Errorf("alt+g complained: %q", got.ErrorMsg)
 			}
 		})
 	}
@@ -494,53 +508,26 @@ func TestShellCmdFallsBackToSh(t *testing.T) {
 	}
 }
 
-// An unchecked board and an unplanted project are the same answer: a shell
-// here, no error, no interruption.
-func TestUnplantedOpensAShellHere(t *testing.T) {
-	cases := map[string]func() Model{
-		"before any check": func() Model {
-			m := plantedModel(nil)
-			m.AltModifier = "alt"
-			return m
-		},
-		"checked, never planted": func() Model {
-			m := connectModel("agent")
-			m.GridCursor.Project = 1 // sleeplog
-			return m
-		},
+// One remote is two places, and the picker has to offer both of them.
+func TestSingleHostStillOffersHere(t *testing.T) {
+	next, _ := connectModel("agent").Update(altKey(t, 'g'))
+	m := next.(Model)
+
+	if m.State != stateConnecting {
+		t.Fatal("alt+g on a singly-planted project asked nothing")
 	}
 
-	for name, build := range cases {
-		t.Run(name, func(t *testing.T) {
-			next, cmd := build().Update(altKey(t, 'g'))
-			got := next.(Model)
-
-			if cmd == nil {
-				t.Error("alt+g did nothing")
-			}
-			if got.ErrorMsg != "" {
-				t.Errorf("alt+g complained: %q", got.ErrorMsg)
-			}
-			if got.State != stateNormal {
-				t.Error("a local shell must not open the picker")
-			}
-		})
+	view := m.View()
+	if !strings.Contains(view, "agent") || !strings.Contains(view, "here") {
+		t.Errorf("the picker does not offer both places:\n%s", view)
 	}
-}
 
-// One host is not a choice, so there is nothing to ask.
-func TestConnectGoesStraightToASingleHost(t *testing.T) {
-	next, cmd := connectModel("agent").Update(altKey(t, 'g'))
-	got := next.(Model)
-
+	local, cmd := press(t, m, "j").Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
-		t.Fatal("alt+g on a planted project did not connect")
+		t.Error("choosing here did nothing")
 	}
-	if got.State != stateNormal {
-		t.Error("a single host must not open the picker")
-	}
-	if got.ErrorMsg != "" {
-		t.Errorf("unexpected error %q", got.ErrorMsg)
+	if got := local.(Model); got.State != stateNormal || got.ErrorMsg != "" {
+		t.Errorf("choosing here left state %v, error %q", got.State, got.ErrorMsg)
 	}
 }
 
@@ -649,7 +636,8 @@ func TestConnectWithoutAMatchingRemote(t *testing.T) {
 	m := connectModel("agent")
 	m.Remotes = nil
 
-	_, cmd := m.Update(altKey(t, 'g'))
+	picked, _ := m.Update(altKey(t, 'g'))
+	_, cmd := picked.(Model).Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("alt+g said nothing about an unknown remote")
 	}

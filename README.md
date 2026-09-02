@@ -153,7 +153,7 @@ statuses = ["inProgress", "onHold"]
 - `alt+1` … `alt+9` – jump straight to a workspace by number. Numbering follows the order Garlic loads bulbs — all `full-bulb`s first, then all `semi-bulb`s — which is the `[2/3]` counter in the header
 - `tab` – toggle hidden view
 - `g` – check which projects are planted on your remotes
-- `alt+g` – open a shell in the selected project's folder: on the remote holding it if a check found one there, otherwise here
+- `alt+g` – open a shell in the selected project's folder. Work that is planted lives in two places, so garlic asks which one; work that never left opens here without asking
 - `q` – quit Garlic
 
 ### 🛠️ Bring Your Own Tools

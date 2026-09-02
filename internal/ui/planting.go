@@ -28,25 +28,8 @@ import (
 
 const footerSep = " • "
 
-// shellHost is where alt+g goes: the one remote holding the project, or "" for
-// here. Work garlic has not been asked about is work it only knows locally, so
-// an unchecked board lands you on this machine rather than refusing -- and a
-// board with no remotes configured at all still gets a shell.
-//
-// choose says the cursor is on work that lives in more than one place, which is
-// the only case alt+g cannot answer by itself.
-func (m Model) shellHost(board domain.Board, p domain.Project) (host string, choose bool) {
-	switch hosts := m.plantedOn(board, p); len(hosts) {
-	case 0:
-		return "", false
-	case 1:
-		return hosts[0], false
-	}
-	return "", true
-}
-
-// shellCmd is that destination as a command: ssh into the planting when host
-// names a remote, your own shell in the project's folder when it is empty.
+// shellCmd is where alt+g puts you, as a command: ssh into the planting when
+// host names a remote, your own shell in the project's folder when it is empty.
 //
 // resourcePath applies the same rule on this side that remote.Shell applies on
 // the other -- the resource folder when there is one, its area when there is

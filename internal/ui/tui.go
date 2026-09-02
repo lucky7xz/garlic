@@ -728,19 +728,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, checkRemotes(m.Remotes)
 
 		// The modified key puts you in the project's folder, and the cursor
-		// decides which folder that is: the remote holding the work when a
-		// check found one, this machine otherwise. Only work planted in more
-		// than one place is a question garlic has to ask.
+		// decides which folder that is. Work that went somewhere lives in two
+		// places at once -- the copy you planted and the one you planted it
+		// from -- so being planted at all is the question, not being planted
+		// twice. Only work that never left has a single answer.
 		case modG:
 			p, ok := m.getSelectedProject()
 			if !ok {
 				break
 			}
-			if host, choose := m.shellHost(*currentBoard, p); !choose {
-				return m, m.session(*currentBoard, p, host)
+			hosts := m.plantedOn(*currentBoard, p)
+			if len(hosts) == 0 {
+				return m, m.session(*currentBoard, p, "")
 			}
 			m.State, m.ActionTarget = stateConnecting, p
-			m.ConnectHosts, m.ConnectCursor = m.plantedOn(*currentBoard, p), 0
+			m.ConnectHosts, m.ConnectCursor = hosts, 0
 
 		case "enter", " ", modEnter, modSpace:
 			if p, ok := m.getSelectedProject(); ok {
