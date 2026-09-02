@@ -153,3 +153,71 @@ func TestHelpOverlayFitsWhenOffered(t *testing.T) {
 		}
 	}
 }
+
+// Which kind of bulb you are on decides what a column means and what a card is.
+// The board knows; before this it kept it to itself.
+func TestHeaderNamesTheBulbKind(t *testing.T) {
+	full := plantedBoard()
+
+	semi := plantedBoard()
+	semi.Opts.WholeFolder = true
+
+	// The board built when nothing is configured is neither kind.
+	placeholder := plantedBoard()
+	placeholder.Opts = domain.BoardOptions{}
+
+	cases := []struct {
+		name  string
+		board domain.Board
+		want  string
+		not   string
+	}{
+		{"full bulb", full, "[full]", "[semi]"},
+		{"semi bulb", semi, "[semi]", "[full]"},
+		{"nothing configured", placeholder, "Workspace:", "["},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			header := titleLine(t, modelAt(c.board, 100, 40))
+
+			if !strings.Contains(header, c.want) {
+				t.Errorf("header %q should contain %q", header, c.want)
+			}
+			// The counter is bracketed too, so only what follows the name counts.
+			_, after, _ := strings.Cut(header, "Workspace:")
+			if strings.Contains(after, c.not) {
+				t.Errorf("header %q should not contain %q after the name", header, c.not)
+			}
+		})
+	}
+}
+
+// The kind sits in the same slot as the hidden marker, and neither displaces
+// the other.
+func TestHeaderKindAndHiddenTogether(t *testing.T) {
+	m := modelAt(plantedBoard(), 100, 40)
+	m.ShowHidden = true
+
+	header := titleLine(t, m)
+	if !strings.Contains(header, "[full]") || !strings.Contains(header, "[HIDDEN]") {
+		t.Errorf("header %q should carry both markers", header)
+	}
+	if strings.Index(header, "[full]") > strings.Index(header, "[HIDDEN]") {
+		t.Errorf("header %q: identity should come before view state", header)
+	}
+}
+
+// titleLine picks the header out of a rendered board. The view is centered in
+// the terminal, so the first line is padding rather than the title.
+func titleLine(t *testing.T, m Model) string {
+	t.Helper()
+
+	for _, line := range strings.Split(m.View(), "\n") {
+		if strings.Contains(line, "Workspace:") {
+			return line
+		}
+	}
+	t.Fatal("no workspace title in the rendered view")
+	return ""
+}

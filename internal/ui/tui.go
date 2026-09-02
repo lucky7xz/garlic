@@ -935,11 +935,25 @@ func (m Model) View() string {
 		activeSelectedCellStyle = activeSelectedCellStyle.Faint(true).Bold(false)
 		activeTitleStyle = activeTitleStyle.Faint(true).Bold(false)
 	}
+	// Which kind of bulb you are on decides what a column means and what a card
+	// is, so the board says it rather than leaving you to infer it from the file
+	// names. It rides the same slot as [HIDDEN]: identity first, view state
+	// after. The placeholder board built when nothing is configured is neither
+	// kind, and says nothing.
+	suffix := viewMode
+	if currentBoard.Opts.Path != "" {
+		kind := " [full]"
+		if currentBoard.Opts.WholeFolder {
+			kind = " [semi]"
+		}
+		suffix = kind + viewMode
+	}
+
 	prefix := fmt.Sprintf("%s [%d/%d] Workspace: ", garlicMark, m.ActiveBoard+1, len(m.Boards))
 	// The board name is arbitrary length, so it -- not the grid -- is what pushes
 	// the header past the terminal edge. Trim it to whatever the prefix leaves.
-	boardName := truncate(currentBoard.Name, m.TermWidth-lipgloss.Width(prefix)-lipgloss.Width(viewMode))
-	headerStr := activeTitleStyle.Render(prefix) + boardName + activeTitleStyle.Render(viewMode) + "\n" + m.SeparatorStyle.Faint(true).Render(strings.Repeat("─", sepWidth)) + "\n"
+	boardName := truncate(currentBoard.Name, m.TermWidth-lipgloss.Width(prefix)-lipgloss.Width(suffix))
+	headerStr := activeTitleStyle.Render(prefix) + boardName + activeTitleStyle.Render(suffix) + "\n" + m.SeparatorStyle.Faint(true).Render(strings.Repeat("─", sepWidth)) + "\n"
 
 	// One mark per fact: a fully planted area is marked on its column, and its
 	// projects then say nothing, since the column already said it.
