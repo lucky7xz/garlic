@@ -7,76 +7,45 @@
 
 *A chronyx.xyz project*
 
-Garlic is a terminal Kanban board built on your filesystem. Garlic offers a reactive, configurable overview of current projects, quick navigation to their resources, and the ability to insert, delete, move, hide and [TODO: archive] — all from within the TUI. 
+A terminal Kanban board built on your filesystem. Projects are markdown files, a project's status is a tag inside the file, and the board is what those files look like arranged into columns. Edit one in any editor and the board moves — there is no database, no index, nothing to keep in sync.
 
-Building on the well-known [PARA Method](https://fortelabs.com/blog/para/) (Projects, Areas, Resources, Archives), garlic re-imagines it for bash-native workflows with a 'bring your own tools' mindset. 
+Built on the [PARA Method](https://fortelabs.com/blog/para/) (Projects, Areas, Resources, Archives) and re-imagined for bash-native workflows with a bring-your-own-tools mindset: garlic handles the *where*, your editor and file manager handle the *how*. It can also hand a project to another machine — often an agent — and collect the work later; see [Planting and harvesting](#-planting-and-harvesting).
 
-## 🚀 Installation
-
-Once Go is installed on your system, you can install garlic:
-
-```bash
-go install github.com/lucky7xz/garlic@latest
-```
-
-> **No Go toolchain?** Prebuilt static binaries for Linux, macOS and FreeBSD, plus `.deb` and `.rpm` packages, are on the [Releases](https://github.com/lucky7xz/garlic/releases) page.
-
-Or let the installer pick the right archive, verify its checksum and put the binary in your path:
+## 🚀 Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lucky7xz/garlic/main/install.sh | sh
 ```
 
-### 🔄 Update
+No toolchain needed: the installer picks the archive for your machine, verifies its checksum against the release, and installs to `/usr/local/bin` when that is writable and `~/.local/bin` otherwise — telling you if that directory is not on your `PATH`.
 
-To update garlic to the latest version, simply run the installation command again.
+| | |
+|---|---|
+| **Runs on** | Linux, macOS, FreeBSD — x86_64, arm64, armv7 |
+| **By hand** | static binaries, `.deb` and `.rpm` on the [Releases](https://github.com/lucky7xz/garlic/releases) page |
+| **With Go** | `go install github.com/lucky7xz/garlic@latest` — lands in `~/go/bin`, which your shell may not search yet |
+| **Stale version?** | `GOPROXY=direct go install github.com/lucky7xz/garlic/cmd/garlic@latest` |
+| **Update** | rerun whichever command you installed with |
+| **Which build is this?** | `garlic version` |
 
-If you are not getting the latest version, use this command instead:
+After `go install`, if your shell cannot find `garlic`: `echo 'export PATH=$PATH:~/go/bin' >> ~/.bashrc` (or `~/.zshrc`), then open a new shell.
 
-```bash
-GOPROXY=direct go install github.com/lucky7xz/garlic/cmd/garlic@latest
-```
-
-### 🛠️ Post-Installation
-Ensure your shell can find the `garlic` binary. Depending on your OS, run the following:
-
-**Linux (Bash):**
-```bash
-echo 'export PATH=$PATH:~/go/bin' >> ~/.bashrc
-echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
-echo "Path added to ~/.bashrc. Restart shell to take effect."
-```
-
-**macOS (Zsh):**
-```bash
-echo 'export PATH=$PATH:~/go/bin' >> ~/.zshrc
-echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.zshrc
-echo "Path added to ~/.zshrc. Restart shell to take effect."
-```
-
-### 🧄 Quick Start
-
-Run the initialization command to generate a pre-peeled workspace that you can tweak to make your own:
+### 🧄 Quick start
 
 ```bash
 garlic init
 ```
 
-This will generate a directory structure in `~/shara` containing example projects and resources. It perfectly matches the default configuration paths so you can start using `garlic` without the prep work!
-## Why plain-text notes?
-
-- **Simplicity** – no proprietary databases; a file is a file.
-- **Versatility** – edit with any editor, back-up to a git server, sync to any device.
-- **Security** – plain text works naturally with encryption tools (e.g., `gpg`) and is audit-friendly.
+Writes an example workspace to `~/shara` — projects, statuses, a resource folder — matching the default config, so there is a board to look at before you point garlic at your own files.
 
 ## How it works
 
-Garlic scans only **first-level sub-directories** (of the configured paths), and proceeds to add the relevant **.md/.clove.md** (markdown) files as individual projects to the workspace board.
+Garlic scans the **first-level sub-directories** of each configured path and tracks the markdown files it finds there. Everything it knows comes out of the files themselves:
 
-**Project Tracking:**
-Garlic determines a project's status by scanning for a status tag within the file content. 
-- Use `#statustag-xxxx` (e.g., `#statustag-inProgress`) to assign a status.
-- Use `#garlic-hide` to move a project to the hidden view (toggled with `tab`).
+| in the file | means |
+|---|---|
+| `#statustag-inProgress` | the project sits in the `inProgress` row — any status you configure |
+| `#garlic-hide` | it moves to the hidden view, toggled with `tab` |
 
 ```
 ~/shara/
@@ -98,83 +67,105 @@ Garlic determines a project's status by scanning for a status tag within the fil
 │       └── neofetch.sh
 ```
 
-- **Full Bulb (for Homogenous Workspaces)** – tracks **every** first-level `.md` file. Ideal for pure collections of projects and resources, split into areas. 
-- **Semi Bulb (for Heterogenous Workspace)** – tracks only `.clove.md` files on first-level. Perfect for script directories where most things are downloaded noise and only a few need active attention.
+Each configured `path` is a workspace (a **bulb**), each status tag a horizontal section, each first-level sub-directory a column. There are two kinds of bulb, and the difference is what counts as a project:
 
-Each `path` becomes a workspace (Bulb). Each `status` tag becomes a horizontal section. Each first-level sub-directory becomes a column.
+| | full bulb | semi bulb |
+|---|---|---|
+| **tracks** | every first-level `.md` | only `.clove.md` files |
+| **a project is** | the file, plus its same-named resource folder | the folder itself — the clove is a note about it |
+| **a column is** | an area holding several projects | one project |
+| **made for** | homogeneous collections: epics, decks, notes | source directories, where most of what is there is noise |
+
+Two marks appear on the board:
+
+| mark | means |
+|---|---|
+| 📎 | the project's resource folder holds something — an empty one is not marked |
+| 🌱 | it is planted on a remote — see [Planting and harvesting](#-planting-and-harvesting) |
 
 > [!TIP]
-> Garlic automatically watches your filesystem for changes. Any edits made externally are reflected in the TUI instantly.
+> Garlic watches your filesystem. Edits made outside the TUI show up in it instantly.
 
+### Why plain text
+
+| | |
+|---|---|
+| **No database** | a file is a file — nothing to corrupt, migrate or export |
+| **Any tool works** | any editor, `grep`, `git` for backup, whatever you sync with |
+| **Encryption-friendly** | plain text pairs naturally with `gpg`, and is easy to audit |
+
+## ⌨️ Keys
+
+`?` brings up a quick reference inside the TUI.
+
+**Navigate**
+
+| key | |
+|---|---|
+| `h j k l`, arrows, `wasd` | move the cursor |
+| `o` / `p` | previous / next workspace |
+| `alt+1` … `alt+9` | jump to a workspace by number — the order garlic loads bulbs in, which is the `[2/3]` counter in the header |
+| `tab` | show hidden projects |
+| `q` | quit |
+
+**Open** — garlic hands off to your own tools
+
+| key | |
+|---|---|
+| `enter` / `space` | open the file in your editor |
+| `alt+enter` | …in your alternative editor |
+| `r` | open the resource folder in your file manager |
+| `alt+r` | …in your alternative file manager |
+| `alt+g` | a shell in the project's folder: here, or on the remote holding it |
+
+**Manage**
+
+| key | |
+|---|---|
+| `i` | new project file in this column |
+| `m` | move it to another status |
+| `e` | rename it |
+| `u` | hide / unhide |
+| `Del` | delete it, after typing the word |
+| `g` | check what is planted on your remotes |
 
 ## ⚙️ Configuration
 
-Configure paths, editors, and file managers in `~/.config/garlic/config.toml`.
+`~/.config/garlic/config.toml`. Primary and alternative tools give you two workflows on one key — `micro` on `enter` and `glow -p` on `alt+enter`, `yazi` on `r` and `dolphin` on `alt+r`. Commands take up to one flag.
 
-Garlic supports **Primary and Alternative tools**, allowing you to set up quick dual-workflows. For example, you can use `micro` for editing (`Enter`) and `glow -p` for viewing (`Alt+Enter`), or `yazi` for terminal file management (`r`) and `dolphin` for GUI file management (`Alt+r`). 
-
-Commands support up to **one flag** (e.g., `glow -p`).
+| key | |
+|---|---|
+| `editor` / `alt_editor` | opens a project file. Unset falls back to `$EDITOR`, then `xdg-open` (`open` on macOS) |
+| `file_manager` / `alt_file_manager` | opens a resource folder. Unset falls back to `$FILEMANAGER` |
+| `alt_modifier` | the modifier for the alternatives, default `alt`. Workspace jumping stays on `alt+1..9` whatever you set, since terminals cannot send `ctrl+<digit>` as a distinct key |
+| `async_apps` | launched detached, for GUI tools. Never put a TUI here — it would lose the terminal |
+| `theme` | see [Theming](#-theming) |
+| `[[full-bulb]]` / `[[semi-bulb]]` | a workspace: its `path`, its `statuses`, and optionally what to `ignore` |
+| `[[remote]]` | a machine to plant to — see [Planting and harvesting](#-planting-and-harvesting) |
 
 ```toml
-# Primary tools
-editor = "micro"
-file_manager = "yazi"
+theme = "dracula"
 
-# Alternative tools (use alt+enter or alt+r)
-alt_editor = "glow -p"
+editor           = "micro"
+file_manager     = "yazi"
+alt_editor       = "glow -p"
 alt_file_manager = "dolphin"
+alt_modifier     = "alt"
 
-# Modifier for alternatives (default: "alt")
-# Does not affect workspace jumping: alt+1..9 is always bound, since terminals
-# cannot send ctrl+<digit> as a distinct key.
-alt_modifier = "alt"
-
-# Apps that should launch in the background (GUI tools)
-# Note: Do not put TUI apps (like vim, micro, glow) in this list.
 async_apps = ["xdg-open", "open", "dolphin", "gedit", "code"]
 
 [[full-bulb]]
-path = "~/shara/epics"
+path     = "~/shara/epics"
 statuses = ["inProgress", "onHold", "toDo"]
 
 [[semi-bulb]]
-path = "~/shara/scripts"
+path     = "~/shara/scripts"
 statuses = ["inProgress", "onHold"]
-
-[[semi-bulb]]
-path = "~/shara/decks"
-statuses = ["inProgress", "onHold"]
-
+ignore   = ["dist", "node_modules"]
 ```
 
 > [!IMPORTANT]
-> **Async Launching:** Garlic now supports detached launching for GUI applications. Check the [default config template](internal/config/bootstrap/config.toml) for the new `async_apps`, `alt_editor`, and `alt_file_manager` fields. If you are upgrading, please update your `config.toml` to include these fields.
-
-> [!NOTE]
-> The default configuration uses [micro](https://github.com/zyedidia/micro) as the editor and [yazi](https://github.com/sxyazi/yazi) as the file manager. If `editor` or `file_manager` are not specified in the config, Garlic will fallback to your system's `$EDITOR` and `$FILEMANAGER` (defaulting to `xdg-open` or `open` if unset).
-
-## ⌨️ UI cheat‑sheet
-
-### Navigation
-- `h/j/k/l` or arrows/wasd – move cursor
-- `o` / `p` – cycle between workspaces (Bulbs)
-- `alt+1` … `alt+9` – jump straight to a workspace by number. Numbering follows the order Garlic loads bulbs — all `full-bulb`s first, then all `semi-bulb`s — which is the `[2/3]` counter in the header
-- `tab` – toggle hidden view
-- `g` – check which projects are planted on your remotes
-- `alt+g` – open a shell in the selected project's folder. Work that is planted lives in two places, so garlic asks which one; work that never left opens here without asking
-- `q` – quit Garlic
-
-### 🛠️ Bring Your Own Tools
-Garlic handles the "where", but leaves the "how" to your favorite terminal tools.
-- `Enter` / `Space` – Open selected file in your editor
-- `r` – Open resource folder in your file manager (marked 📎 when the folder holds something; an empty one is not marked)
-
-### Management
-- `i` – create a new task file in the current location
-- `m` – cycle through available status tags (moves the project)
-- `u` – toggle hidden state
-- `e` – edit filename 
-- `Del` – delete the selected file (confirmation required)
+> Upgrading from before `async_apps`, `alt_editor` and `alt_file_manager` existed? Copy them across from the [default template](internal/config/bootstrap/config.toml). A `[[remote]]` block must stay **last** in the file — a TOML table header captures every key that follows it.
 
 ## 🌱 Planting and harvesting
 
@@ -198,12 +189,12 @@ there — garlic writes a plain tree inside `root` and nothing outside it.
 
 **2. Use the four verbs:**
 
-```bash
-garlic plant   epics/fitness/running @ agent   # send it
-garlic status                        @ agent   # what changed over there?
-garlic harvest epics/fitness/running @ agent   # bring the work back
-garlic wipe    epics/fitness/running @ agent   # reset it, then plant again
-```
+| | |
+|---|---|
+| `garlic plant epics/fitness/running @ agent` | send it |
+| `garlic status @ agent` | what changed over there? |
+| `garlic harvest epics/fitness/running @ agent` | bring the work back |
+| `garlic wipe epics/fitness/running @ agent` | reset it, then plant again |
 
 The address is the board's own coordinates — `bulb`, `bulb/area`, or
 `bulb/area/project` — so `garlic plant epics` sends a whole bulb. `@ <remote>` is
@@ -215,13 +206,8 @@ to place yourself.
 **What travels:** on a full bulb, a project file plus its resource folder. On a
 semi bulb the folder *is* the project, so all of it goes. Projects you have
 hidden with `#garlic-hide` stay home — that is what hiding means. `.git` stays
-home too unless you ask for it (below), and you can exclude more per bulb:
-
-```toml
-[[semi-bulb]]
-path   = "~/shara/scripts"
-ignore = ["dist", "node_modules", "target", ".venv"]
-```
+home too unless you ask for it (below), and anything else you name in the bulb's
+`ignore` list stays with it.
 
 ### 🔀 Handing over a git repo
 

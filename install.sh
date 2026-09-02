@@ -2,7 +2,7 @@
 # garlic installer — downloads the latest release binary, verifies its
 # checksum, and installs it.
 #
-#   curl -fsSL https://garlic.chronyx.xyz | sh
+#   curl -fsSL https://raw.githubusercontent.com/lucky7xz/garlic/main/install.sh | sh
 #
 # Pure POSIX sh. Installs to ~/.local/bin (or /usr/local/bin when writable).
 
