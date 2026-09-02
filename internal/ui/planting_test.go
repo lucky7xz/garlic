@@ -396,49 +396,133 @@ func connectModel(hosts ...string) Model {
 	return m
 }
 
-// alt+g acts on what a check found. With nothing found -- because nobody asked,
-// or because the project is not out there -- it must say so rather than open a
-// session on a guess.
-func TestConnectRefusesToGuess(t *testing.T) {
+// alt+g reads the cursor: work a check found on a remote is over there, and
+// everything else -- unplanted, or never asked about -- is here. The board
+// never refuses, because the local folder is the one thing it always knows.
+func TestShellHostReadsTheCursor(t *testing.T) {
 	cases := []struct {
-		name  string
-		model func() Model
-		want  string
+		name       string
+		model      func() Model
+		wantHost   string
+		wantChoose bool
 	}{
 		{
-			"before any check",
-			func() Model {
-				m := plantedModel(nil)
-				m.AltModifier = "alt"
-				return m
-			},
-			"press g",
+			"nobody has asked yet",
+			func() Model { return plantedModel(nil) },
+			"", false,
 		},
 		{
-			"checked, but this project never went",
+			"checked, and this project never went",
 			func() Model {
 				m := connectModel("agent")
 				m.GridCursor.Project = 1 // sleeplog, never planted
 				return m
 			},
-			"sleeplog.md",
+			"", false,
+		},
+		{
+			"planted on one remote",
+			func() Model { return connectModel("agent") },
+			"agent", false,
+		},
+		{
+			"planted on two is a question",
+			func() Model { return connectModel("agent", "berta") },
+			"", true,
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			m := c.model()
-			next, cmd := m.Update(altKey(t, 'g'))
+			p, ok := m.getSelectedProject()
+			if !ok {
+				t.Fatal("no project under the cursor")
+			}
+
+			host, choose := m.shellHost(m.Boards[0], p)
+			if host != c.wantHost || choose != c.wantChoose {
+				t.Errorf("shellHost = (%q, %v), want (%q, %v)", host, choose, c.wantHost, c.wantChoose)
+			}
+		})
+	}
+}
+
+// The two halves of alt+g have to land in the same folder, one over ssh and one
+// with a cd. Nothing here runs either command.
+func TestShellCmdBothWays(t *testing.T) {
+	t.Setenv("SHELL", "/usr/bin/fish")
+
+	m := connectModel("agent")
+	p, _ := m.getSelectedProject()
+
+	local, err := m.shellCmd(m.Boards[0], p, "")
+	if err != nil {
+		t.Fatalf("local shell: %v", err)
+	}
+	if local.Path != "/usr/bin/fish" {
+		t.Errorf("local shell is %q, want $SHELL", local.Path)
+	}
+	// bioz holds no resource folder on this machine, so the area is the answer,
+	// which is the same fallback the remote script takes.
+	if want := "/home/me/shara/epics/bioz"; local.Dir != want {
+		t.Errorf("local shell starts in %q, want %q", local.Dir, want)
+	}
+
+	over, err := m.shellCmd(m.Boards[0], p, "agent")
+	if err != nil {
+		t.Fatalf("remote shell: %v", err)
+	}
+	if over.Args[0] != "ssh" {
+		t.Errorf("remote shell runs %q, want ssh", over.Args[0])
+	}
+}
+
+// Without $SHELL there is still a shell.
+func TestShellCmdFallsBackToSh(t *testing.T) {
+	t.Setenv("SHELL", "")
+
+	m := connectModel()
+	p, _ := m.getSelectedProject()
+
+	local, err := m.shellCmd(m.Boards[0], p, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.Path != "/bin/sh" {
+		t.Errorf("local shell is %q, want /bin/sh", local.Path)
+	}
+}
+
+// An unchecked board and an unplanted project are the same answer: a shell
+// here, no error, no interruption.
+func TestUnplantedOpensAShellHere(t *testing.T) {
+	cases := map[string]func() Model{
+		"before any check": func() Model {
+			m := plantedModel(nil)
+			m.AltModifier = "alt"
+			return m
+		},
+		"checked, never planted": func() Model {
+			m := connectModel("agent")
+			m.GridCursor.Project = 1 // sleeplog
+			return m
+		},
+	}
+
+	for name, build := range cases {
+		t.Run(name, func(t *testing.T) {
+			next, cmd := build().Update(altKey(t, 'g'))
 			got := next.(Model)
 
-			if cmd != nil {
-				t.Error("alt+g connected without knowing where to")
+			if cmd == nil {
+				t.Error("alt+g did nothing")
 			}
-			if !strings.Contains(got.ErrorMsg, c.want) {
-				t.Errorf("ErrorMsg is %q, want it to mention %q", got.ErrorMsg, c.want)
+			if got.ErrorMsg != "" {
+				t.Errorf("alt+g complained: %q", got.ErrorMsg)
 			}
 			if got.State != stateNormal {
-				t.Error("a refusal must leave the board alone")
+				t.Error("a local shell must not open the picker")
 			}
 		})
 	}
@@ -504,6 +588,36 @@ func TestConnectPicksBetweenHosts(t *testing.T) {
 	}
 }
 
+// The copy on this machine is a place the project lives too, so it is the last
+// row -- and a row only, never an entry in ConnectHosts, which a remote named
+// "here" would otherwise collide with.
+func TestPickerOffersHereLast(t *testing.T) {
+	next, _ := connectModel("agent", "berta").Update(altKey(t, 'g'))
+	m := next.(Model)
+
+	if len(m.ConnectHosts) != 2 {
+		t.Errorf("ConnectHosts is %q, want the remotes alone", m.ConnectHosts)
+	}
+	if !strings.Contains(m.View(), "here") {
+		t.Errorf("the picker offers no way back to this machine:\n%s", m.View())
+	}
+
+	// Two remotes, so the third row down is here, and one more j must not run
+	// off the end.
+	end := press(t, press(t, press(t, m, "j"), "j"), "j")
+	if end.ConnectCursor != 2 {
+		t.Fatalf("cursor at %d, want it parked on here", end.ConnectCursor)
+	}
+
+	chosen, cmd := end.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Error("enter on here did nothing")
+	}
+	if got := chosen.(Model); got.State != stateNormal || got.ErrorMsg != "" {
+		t.Errorf("choosing here left state %v, error %q", got.State, got.ErrorMsg)
+	}
+}
+
 // The board's own keys stay put while the picker is open: q closes it rather
 // than quitting garlic, and the grid must not move underneath.
 func TestConnectPickerCancels(t *testing.T) {
@@ -540,9 +654,9 @@ func TestConnectWithoutAMatchingRemote(t *testing.T) {
 		t.Fatal("alt+g said nothing about an unknown remote")
 	}
 
-	msg, ok := cmd().(connectDoneMsg)
+	msg, ok := cmd().(sessionDoneMsg)
 	if !ok || msg.err == nil {
-		t.Fatalf("got %#v, want a connectDoneMsg carrying an error", msg)
+		t.Fatalf("got %#v, want a sessionDoneMsg carrying an error", msg)
 	}
 	if !strings.Contains(msg.err.Error(), "agent") {
 		t.Errorf("error is %q, want it to name the remote", msg.err)

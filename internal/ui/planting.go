@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -26,24 +28,60 @@ import (
 
 const footerSep = " • "
 
-// connect hands the terminal to ssh, landing in the project's folder on the
-// named remote. tea.ExecProcess is what makes this a visit rather than an exit:
-// the board suspends, comes back when you log out, and the cursor is still on
-// the card you left from -- unlike `r` and enter, which quit and let the runner
-// take over.
-func (m Model) connect(board domain.Board, p domain.Project, host string) tea.Cmd {
+// shellHost is where alt+g goes: the one remote holding the project, or "" for
+// here. Work garlic has not been asked about is work it only knows locally, so
+// an unchecked board lands you on this machine rather than refusing -- and a
+// board with no remotes configured at all still gets a shell.
+//
+// choose says the cursor is on work that lives in more than one place, which is
+// the only case alt+g cannot answer by itself.
+func (m Model) shellHost(board domain.Board, p domain.Project) (host string, choose bool) {
+	switch hosts := m.plantedOn(board, p); len(hosts) {
+	case 0:
+		return "", false
+	case 1:
+		return hosts[0], false
+	}
+	return "", true
+}
+
+// shellCmd is that destination as a command: ssh into the planting when host
+// names a remote, your own shell in the project's folder when it is empty.
+//
+// resourcePath applies the same rule on this side that remote.Shell applies on
+// the other -- the resource folder when there is one, its area when there is
+// not -- so both halves of alt+g land in the same place.
+func (m Model) shellCmd(board domain.Board, p domain.Project, host string) (*exec.Cmd, error) {
+	if host == "" {
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/sh"
+		}
+		cmd := exec.Command(shell)
+		cmd.Dir = m.resourcePath(p)
+		return cmd, nil
+	}
+
 	r, ok := m.findRemote(host)
 	if !ok {
 		// The name came from a manifest a configured remote handed us, so this
 		// means the config changed under a check that is still on screen.
-		return func() tea.Msg {
-			return connectDoneMsg{fmt.Errorf("no remote named %q in your config", host)}
-		}
+		return nil, fmt.Errorf("no remote named %q in your config", host)
 	}
+	return remote.Shell(r, remote.Rel(board.Opts, p.Path), board.Opts.Extension), nil
+}
 
-	cmd := remote.Shell(r, remote.Rel(board.Opts, p.Path), board.Opts.Extension)
+// session hands the terminal over. tea.ExecProcess is what makes this a visit
+// rather than an exit: the board suspends, comes back when the shell ends, and
+// the cursor is still on the card you left from -- unlike `r` and enter, which
+// quit and let the runner take over.
+func (m Model) session(board domain.Board, p domain.Project, host string) tea.Cmd {
+	cmd, err := m.shellCmd(board, p, host)
+	if err != nil {
+		return func() tea.Msg { return sessionDoneMsg{err} }
+	}
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
-		return connectDoneMsg{err}
+		return sessionDoneMsg{err}
 	})
 }
 
@@ -58,26 +96,36 @@ func (m Model) findRemote(name string) (domain.Remote, bool) {
 	return domain.Remote{}, false
 }
 
-// connectMenu is the choice of remote, drawn when a project went to more than
-// one. It borrows the help overlay's frame so the two read as the same kind of
-// interruption, and needs no size floor of its own: a handful of host names is
-// narrower and shorter than the help the board already gates on.
+// connectMenu is the choice alt+g cannot make on its own: the remotes holding
+// the project, and the copy on this machine. It borrows the help overlay's
+// frame so the two read as the same kind of interruption, and needs no size
+// floor of its own -- a handful of host names is narrower and shorter than the
+// help the board already gates on.
+//
+// "here" is drawn as a row rather than stored in ConnectHosts, because a remote
+// is free to be named "here" in anyone's config. That also keeps the slice the
+// check handed us untouched: it is Sighting.Where's own memory, and appending
+// to it could write past what the map thinks it lent out.
 func (m Model) connectMenu() string {
-	var rows []string
-	for i, host := range m.ConnectHosts {
-		line := "  " + host
+	row := func(label string, i int) string {
 		if i == m.ConnectCursor {
-			line = m.HeaderStyle.UnsetBorderStyle().Render("> " + host)
+			return m.HeaderStyle.UnsetBorderStyle().Render("> " + label)
 		}
-		rows = append(rows, line)
+		return "  " + label
 	}
 
+	rows := make([]string, 0, len(m.ConnectHosts)+1)
+	for i, host := range m.ConnectHosts {
+		rows = append(rows, row(host, i))
+	}
+	rows = append(rows, row("here", len(m.ConnectHosts)))
+
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		m.HelpStyle.Render(plantedMark+" "+m.ActionTarget.Name+" is planted on"),
+		m.HelpStyle.Render(plantedMark+" "+m.ActionTarget.Name+" is on"),
 		"",
 		lipgloss.JoinVertical(lipgloss.Left, rows...),
 		"",
-		m.HelpStyle.Render("enter: connect • esc: cancel"),
+		m.HelpStyle.Render("enter: shell • esc: cancel"),
 	)
 
 	return lipgloss.NewStyle().

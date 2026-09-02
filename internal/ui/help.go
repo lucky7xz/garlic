@@ -19,7 +19,7 @@ var helpEntries = []helpEntry{
 	{"tab", "toglge hidden"},
 	{"r", "open resources"},
 	{"g", "check remotes"},
-	{"alt+g", "ssh into planting"},
+	{"alt+g", "shell here or there"},
 	{"i", "insert file"},
 	{"e", "edit filename"},
 	{"m", "move file"},

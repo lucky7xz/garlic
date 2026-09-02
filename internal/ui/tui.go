@@ -99,7 +99,7 @@ type Model struct {
 
 	// Remotes is where a check can look; Planted is what the last one saw.
 	// Garlic keeps no record of that: it is the answer to a question you asked
-	// with `c`, it lives for the session and dies with it. It sits here rather
+	// with `g`, it lives for the session and dies with it. It sits here rather
 	// than on domain.Project because the watcher replaces Boards wholesale,
 	// which would blink the marks out every time you saved a file.
 	Remotes  []domain.Remote
@@ -164,8 +164,9 @@ func checkRemotes(remotes []domain.Remote) tea.Cmd {
 	}
 }
 
-// connectDoneMsg arrives when an ssh session ends, however it ended.
-type connectDoneMsg struct{ err error }
+// sessionDoneMsg arrives when a shell alt+g opened ends, here or over there,
+// however it ended.
+type sessionDoneMsg struct{ err error }
 
 func InitialModel(config domain.Config) Model {
 	boardOpts := config.GetBoardOptions()
@@ -418,7 +419,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case connectDoneMsg:
+	case sessionDoneMsg:
 		// A session you ended yourself is not news. A refused connection is,
 		// and it arrives here rather than on the screen ssh borrowed.
 		if msg.err != nil {
@@ -558,15 +559,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc", "q":
 				m.State, m.ConnectHosts = stateNormal, nil
 			case "enter", " ":
-				host := m.ConnectHosts[m.ConnectCursor]
+				// The row past the last remote is "here", which session reads
+				// as the empty host.
+				host := ""
+				if m.ConnectCursor < len(m.ConnectHosts) {
+					host = m.ConnectHosts[m.ConnectCursor]
+				}
 				m.State, m.ConnectHosts = stateNormal, nil
-				return m, m.connect(*currentBoard, m.ActionTarget, host)
+				return m, m.session(*currentBoard, m.ActionTarget, host)
 			case "up", "k", "w":
 				if m.ConnectCursor > 0 {
 					m.ConnectCursor--
 				}
 			case "down", "j", "s":
-				if m.ConnectCursor < len(m.ConnectHosts)-1 {
+				// One past the remotes: the last row is "here".
+				if m.ConnectCursor < len(m.ConnectHosts) {
 					m.ConnectCursor++
 				}
 			}
@@ -720,25 +727,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.Checking = true
 			return m, checkRemotes(m.Remotes)
 
-		// The modified key acts on what the plain one found out. Nothing is
-		// guessed: without a check there is no answer to act on, and saying so
-		// beats opening a session somewhere the work may not be.
+		// The modified key puts you in the project's folder, and the cursor
+		// decides which folder that is: the remote holding the work when a
+		// check found one, this machine otherwise. Only work planted in more
+		// than one place is a question garlic has to ask.
 		case modG:
 			p, ok := m.getSelectedProject()
 			if !ok {
 				break
 			}
-			switch hosts := m.plantedOn(*currentBoard, p); {
-			case !m.Planted.Checked():
-				m.ErrorMsg = "No check yet - press g first"
-			case len(hosts) == 0:
-				m.ErrorMsg = fmt.Sprintf("%s is not planted", p.Name)
-			case len(hosts) == 1:
-				return m, m.connect(*currentBoard, p, hosts[0])
-			default:
-				m.State, m.ActionTarget = stateConnecting, p
-				m.ConnectHosts, m.ConnectCursor = hosts, 0
+			if host, choose := m.shellHost(*currentBoard, p); !choose {
+				return m, m.session(*currentBoard, p, host)
 			}
+			m.State, m.ActionTarget = stateConnecting, p
+			m.ConnectHosts, m.ConnectCursor = m.plantedOn(*currentBoard, p), 0
 
 		case "enter", " ", modEnter, modSpace:
 			if p, ok := m.getSelectedProject(); ok {
